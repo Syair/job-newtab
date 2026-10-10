@@ -1,0 +1,24 @@
+{
+  "name": "job-newtab",
+  "private": true,
+  "packageManager": "pnpm@10.11.1",
+  "scripts": {
+    "build": "pnpm --filter @job-newtab/extension build",
+    "zip": "pnpm --filter @job-newtab/extension zip",
+    "dev": "pnpm --filter @job-newtab/extension dev",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "ats:smoke": "tsx harness/ats-smoke.ts",
+    "agent:run": "tsx --env-file=.env harness/run-agent.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

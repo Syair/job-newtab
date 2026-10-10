@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "newtab-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["harness/preview/serve.mjs"],
+      "port": 5180
+    }
+  ]
+}

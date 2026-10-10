@@ -1,0 +1,17 @@
+{
+  "name": "@job-newtab/harness",
+  "private": true,
+  "type": "module",
+  "description": "Node scripts that exercise agent-core outside Chrome.",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@job-newtab/agent-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3"
+  }
+}

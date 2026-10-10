@@ -1,0 +1,23 @@
+node_modules/
+dist/
+.output/
+.wxt/
+coverage/
+
+# Secrets — your Anthropic key goes here for the harness
+.env
+# Private half of the manifest key (only needed to sign a .crx with the same ID)
+*.pem
+.env.*
+!.env.example
+
+# Harness state (agent/environment IDs) and generated job lists
+.agent-state.json
+harness/out/
+
+# Editors / OS
+.vscode/
+.idea/
+.claude/settings.local.json
+.DS_Store
+*.log
