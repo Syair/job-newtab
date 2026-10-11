@@ -6,6 +6,8 @@ export * from "./ats";
 export * from "./search-urls";
 export * from "./board-details";
 export * from "./jobs";
+export * from "./visa";
+export * from "./sponsors";
 export * from "./tracker";
 export * from "./backup";
 export * from "./schemas";

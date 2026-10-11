@@ -5,6 +5,8 @@
  */
 import { knownCompanyDomain } from "./companies";
 import type { JobSource } from "./profile";
+import type { SponsorRecord } from "./sponsors";
+import type { VisaSignal } from "./visa";
 
 export const JOB_SOURCES: JobSource[] = ["greenhouse", "lever", "ashby", "linkedin", "indeed"];
 
@@ -30,6 +32,10 @@ export interface Job {
   concerns: string[];
   /** The agent's one-sentence take for this person. Missing on jobs saved before takes existed. */
   take?: string;
+  /** What the posting says about visas. Set only when the profile needs sponsorship. */
+  visa?: VisaSignal[];
+  /** The employer's H-1B and PERM filings. Set only when the profile needs sponsorship. */
+  sponsor?: SponsorRecord;
 }
 
 /**

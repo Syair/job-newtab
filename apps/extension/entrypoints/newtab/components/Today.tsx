@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  PERM_TRACKER,
+  VISA_SIGNAL_LABEL,
   daysBetween,
   isCardOnly,
   isFollowUpDue,
   jobConcerns,
+  needsSponsorship,
+  sponsorSummary,
   trackedJobs,
+  visaBadge,
   weekStart,
+  type JobProfile,
   type JobStatus,
   type StoredJob,
   type TrackedJob,
@@ -22,6 +28,24 @@ const PAGE = 30;
 
 /** Jobs opened with Apply and not yet answered, so the question survives a reload. */
 const PENDING_KEY = "job-newtab:pending-apply";
+/** Whether jobs that rule out the user's visa status are hidden from the queue. */
+const HIDE_BLOCKED_KEY = "job-newtab:hide-non-sponsors";
+
+function loadFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveFlag(key: string, on: boolean) {
+  try {
+    localStorage.setItem(key, on ? "1" : "0");
+  } catch {
+    // Storage blocked: the toggle resets on reload.
+  }
+}
 
 function loadPending(): string[] {
   try {
@@ -49,11 +73,13 @@ export function Today({
   jobs,
   statuses,
   lastBuild,
+  profile,
   onStatus,
 }: {
   jobs: Record<string, StoredJob>;
   statuses: Record<string, StatusEntry>;
   lastBuild?: LastBuild;
+  profile: JobProfile;
   onStatus: OnStatus;
 }) {
   const now = useMemo(() => new Date(), [statuses]);
@@ -62,8 +88,11 @@ export function Today({
   const [pending, setPending] = useState<string[]>(loadPending);
   const [undo, setUndo] = useState<{ id: string; label: string; previous: JobStatus | null } | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [hideBlocked, setHideBlocked] = useState(() => loadFlag(HIDE_BLOCKED_KEY));
+  const visa = needsSponsorship(profile);
 
   useEffect(() => savePending(pending), [pending]);
+  useEffect(() => saveFlag(HIDE_BLOCKED_KEY, hideBlocked), [hideBlocked]);
   useEffect(() => {
     if (!undo) return;
     const timer = setTimeout(() => setUndo(null), 8000);
@@ -84,9 +113,12 @@ export function Today({
   };
 
   const byFit = (a: StoredJob, b: StoredJob) => b.matchScore - a.matchScore;
-  const queue = Object.values(jobs)
+  const unreviewed = Object.values(jobs)
     .filter((j) => !statuses[j.id])
     .sort(byFit);
+  const blocked = (j: StoredJob) => visaBadge(j, profile, now)?.tone === "bad";
+  const hiddenCount = visa && hideBlocked ? unreviewed.filter(blocked).length : 0;
+  const queue = hiddenCount ? unreviewed.filter((j) => !blocked(j)) : unreviewed;
   const saved = Object.values(jobs)
     .filter((j) => statuses[j.id]?.status === "saved")
     .sort(byFit);
@@ -129,7 +161,16 @@ export function Today({
           </h2>
           <ol className="queue">
             {saved.map((job) => (
-              <JobRow key={job.id} job={job} isNew={false} pending={pending.includes(job.id)} saved {...handlers} />
+              <JobRow
+                key={job.id}
+                job={job}
+                profile={profile}
+                now={now}
+                isNew={false}
+                pending={pending.includes(job.id)}
+                saved
+                {...handlers}
+              />
             ))}
           </ol>
         </section>
@@ -138,13 +179,30 @@ export function Today({
       <section className="block">
         <h2 className="block-head">
           To review <span>{queue.length}</span>
+          {visa && (
+            <label
+              className="head-toggle"
+              title="Hide jobs whose posting rules out your visa status, or whose employer never files for it"
+            >
+              <input type="checkbox" checked={hideBlocked} onChange={(e) => setHideBlocked(e.target.checked)} />
+              Hide non-sponsors{hiddenCount ? ` (${hiddenCount})` : ""}
+            </label>
+          )}
         </h2>
         {queue.length === 0 ? (
           <p className="quiet-note">All caught up. New matches appear after the next search.</p>
         ) : (
           <ol className="queue">
             {shown.map((job) => (
-              <JobRow key={job.id} job={job} isNew={added.has(job.id)} pending={pending.includes(job.id)} {...handlers} />
+              <JobRow
+                key={job.id}
+                job={job}
+                profile={profile}
+                now={now}
+                isNew={added.has(job.id)}
+                pending={pending.includes(job.id)}
+                {...handlers}
+              />
             ))}
           </ol>
         )}
@@ -190,6 +248,8 @@ interface RowHandlers {
 
 function JobRow({
   job,
+  profile,
+  now,
   isNew,
   pending,
   saved,
@@ -198,10 +258,11 @@ function JobRow({
   notYet,
   save,
   skip,
-}: { job: StoredJob; isNew: boolean; pending: boolean; saved?: boolean } & RowHandlers) {
+}: { job: StoredJob; profile: JobProfile; now: Date; isNew: boolean; pending: boolean; saved?: boolean } & RowHandlers) {
   const [open, setOpen] = useState(false);
   const concerns = jobConcerns(job.concerns);
   const age = shortAge(job.postedAt);
+  const badge = visaBadge(job, profile, now);
   return (
     <li className={open ? "q-row open" : "q-row"}>
       <button type="button" className="q-main" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
@@ -210,7 +271,10 @@ function JobRow({
           <span className="q-co">{job.company}</span>
           <span className="q-title">{job.title}</span>
         </span>
-        <span className="q-meta">{[job.location, job.salary].filter(Boolean).join(" · ")}</span>
+        <span className="q-meta">
+          {badge && <span className={`visa-chip ${badge.tone}`}>{badge.text}</span>}
+          {[job.location, job.salary].filter(Boolean).join(" · ")}
+        </span>
         <span className="q-when">{isNew ? <span className="mark">New</span> : age}</span>
         <span className="q-fit" title="Fit score out of 100. Open the row for its parts.">
           <small>fit</small>
@@ -262,6 +326,7 @@ function JobRow({
                 ))}
               </ul>
             )}
+            {needsSponsorship(profile) && <VisaDetail job={job} profile={profile} now={now} />}
             <p className="q-source">
               {[
                 age ? `Posted ${age}` : "",
@@ -276,6 +341,36 @@ function JobRow({
         </div>
       )}
     </li>
+  );
+}
+
+/** What the posting says about visas and what the employer has filed, with credit for the data. */
+function VisaDetail({ job, profile, now }: { job: StoredJob; profile: JobProfile; now: Date }) {
+  const said = (job.visa ?? []).map((s) => VISA_SIGNAL_LABEL[s]);
+  const summary = job.sponsor ? sponsorSummary(job.sponsor, profile, now) : null;
+  if (!said.length && !summary) return null;
+  return (
+    <div className="q-visa">
+      <div className="q-visa-head">Visa sponsorship</div>
+      <ul className="q-list">
+        {said.map((line) => (
+          <li key={line}>Posting: {line.charAt(0).toLowerCase() + line.slice(1)}.</li>
+        ))}
+        {summary?.lines.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+      {job.sponsor && (
+        <p className="q-source">
+          Filings from{" "}
+          <a href={job.sponsor.url} target="_blank" rel="noreferrer">
+            {PERM_TRACKER.name} (permtracker.app)
+          </a>
+          {job.sponsor.asOf ? `, decided cases through ${job.sponsor.asOf}` : ""}. Past filings, not a promise for
+          this role. Not legal advice.
+        </p>
+      )}
+    </div>
   );
 }
 

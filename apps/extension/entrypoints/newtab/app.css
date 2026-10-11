@@ -324,6 +324,17 @@ code,
   color: var(--ink);
   margin-left: 4px;
 }
+.head-toggle {
+  float: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
 .queue {
   list-style: none;
   margin: 0;
@@ -388,6 +399,25 @@ a.q-title:hover {
   text-overflow: ellipsis;
 }
 .q-meta.alert {
+  color: var(--accent);
+}
+/* Visa status in words, not a pill: weight for a sponsor, italic for a gap, red for a block. */
+.visa-chip {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.visa-chip::after {
+  content: " · ";
+  font-weight: 400;
+  color: var(--faint);
+}
+.visa-chip.warn {
+  font-weight: 500;
+  font-style: italic;
+  color: var(--soft);
+}
+.visa-chip.bad {
   color: var(--accent);
 }
 .q-when {
@@ -482,6 +512,22 @@ a.q-title:hover {
 }
 .q-detail .score {
   margin-top: 2px;
+}
+.q-visa {
+  margin: 4px 0 8px;
+}
+.q-visa-head {
+  font: 600 11px var(--sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 4px;
+}
+.q-visa .q-list {
+  margin-bottom: 4px;
+}
+.q-visa .q-source a {
+  color: inherit;
 }
 .more-btn {
   margin-top: 14px;
@@ -755,6 +801,13 @@ input[type="checkbox"] {
   border-bottom: 1px solid var(--rule);
   border-radius: 0;
   padding: 8px 0;
+}
+.pf-select {
+  cursor: pointer;
+}
+.pf-select option {
+  background: var(--paper);
+  color: var(--ink);
 }
 .pf-textarea {
   border: 1px solid var(--rule);

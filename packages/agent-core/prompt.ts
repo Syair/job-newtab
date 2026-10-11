@@ -1,5 +1,5 @@
 import { DEALBREAKER_CAP } from "./jobs";
-import { SENIORITY_CHOICES, type JobProfile } from "./profile";
+import { SENIORITY_CHOICES, WORK_AUTH_CHOICES, type JobProfile, type WorkAuth } from "./profile";
 
 export const OUTPUT_PATH = "/mnt/session/outputs/jobs.json";
 
@@ -16,7 +16,7 @@ export function isCardOnly(concerns: string[]): boolean {
 }
 
 /** Bump when the prompt or tool list changes, so cached agents are updated in place. */
-export const AGENT_CONFIG_VERSION = 9;
+export const AGENT_CONFIG_VERSION = 10;
 
 export const JOB_SCOUT_SYSTEM_PROMPT = `You are a job scout for one person. Each run, you find the newest openings that fit them and score each one. They read your list once a day and apply to the best ones, so every word you write should help them decide in seconds.
 
@@ -24,12 +24,13 @@ You have these capabilities:
 - getJobSources (custom tool) — collects today's openings and mounts them into your sandbox:
   - candidates.json: openings from company career boards (Greenhouse, Lever, Ashby),
     already pre-filtered by title and location. Each has id, company, title, location,
-    remote, country, url, postedAt, salary, department and a description excerpt.
+    remote, country, url, postedAt, salary, department, a description excerpt and,
+    when the full description states visa rules, a visa list (see Work authorization).
   - board pages: search-result pages from LinkedIn and/or Indeed, loaded in the user's
     own logged-in browser and saved as sanitized HTML. These show cards only.
   - boards/details.json (when present): the job descriptions for the most relevant
     board cards, opened one by one. Each entry has id (linkedin:<number> or
-    indeed:<jk>), board, url, header and description. The number in a LinkedIn id is
+    indeed:<jk>), board, url, header, description and sometimes visa. The number in a LinkedIn id is
     the one in the card's /jobs/view/ link; the Indeed id is the card's jk.
 - grep / glob / read — work on those mounted files.
 - write — your only way to deliver the result.
@@ -81,6 +82,23 @@ and computes the 0–100 total itself, so do not write a total.
 
 Score what the posting says, not what is typical for the company. When the posting
 does not say, give the middle of the range and name the gap in concerns.
+
+## Work authorization
+
+The kickoff says whether the person needs visa sponsorship. When they do not, ignore
+this section.
+
+- A visa list on a candidate or details entry is what the extension read from the full
+  description: no-sponsorship, citizens-only, us-persons-only (citizens and green card
+  holders), clearance, or sponsors. The excerpt may not show the line it came from.
+  Trust the list.
+- no-sponsorship, citizens-only, us-persons-only and clearance break the rule for
+  someone who needs sponsorship: name it in dealbreaker. For someone on an EAD who
+  only needs a green card later, no-sponsorship is a concern, not a dealbreaker.
+- For a board job with no visa list, read its description for the same kind of line.
+- When the posting says nothing, do not guess from what the company is known for and
+  do not add a sponsorship concern. The extension attaches each employer's H-1B and
+  PERM filing record itself.
 
 ## Output contract
 
@@ -166,6 +184,7 @@ export function buildKickoffMessage({ now, profile, pipeline }: KickoffInput): s
     `- Target roles: ${profile.roles.join("; ")}`,
     `- Levels: ${levels || "any"}`,
     `- Locations: ${where.join("; ")}`,
+    `- Work authorization: ${workAuthLine(profile)}`,
     profile.notes.trim() ? `- Preferences and dealbreakers (hard constraints):\n${indent(profile.notes.trim())}` : null,
     ``,
     profile.resume.trim()
@@ -177,6 +196,20 @@ export function buildKickoffMessage({ now, profile, pipeline }: KickoffInput): s
   ]
     .filter((line) => line !== null)
     .join("\n");
+}
+
+const WORK_AUTH_NOTES: Record<WorkAuth, string> = {
+  none: "no sponsorship needed.",
+  opt: "on F-1 OPT / STEM OPT. Can start now; the employer must file an H-1B (cap-subject, lottery) later.",
+  "h1b-new": "needs a new cap-subject H-1B before starting. Cap-exempt employers (universities, nonprofit research institutes and their affiliates) skip the lottery: say so in matchReasons when a job is at one.",
+  "h1b-transfer": "on an H-1B now and needs the employer to file a transfer petition (no lottery).",
+  ead: "has an EAD, so can start without sponsorship, and needs green card (PERM) sponsorship later.",
+};
+
+function workAuthLine(profile: JobProfile): string {
+  const label = WORK_AUTH_CHOICES.find((c) => c.id === profile.workAuth)?.label ?? profile.workAuth;
+  const gc = profile.workAuth !== "none" && profile.workAuth !== "ead" && profile.wantsGreenCard;
+  return `${label}: ${WORK_AUTH_NOTES[profile.workAuth]}${gc ? " Also wants green card (PERM) sponsorship." : ""}`;
 }
 
 function indent(text: string): string {

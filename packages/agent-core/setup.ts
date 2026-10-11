@@ -31,6 +31,8 @@ export const STORAGE_KEYS = {
   environmentId: "environmentId",
   activeSessionId: "activeSessionId",
   uploadedFileIds: "uploadedFileIds",
+  /** Visa rules read from this run's postings, by job id, until the agent's list comes back. */
+  visaSignals: "visaSignals",
 } as const;
 
 const ENVIRONMENT_NAME = "job-newtab-env";

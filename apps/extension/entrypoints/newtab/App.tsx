@@ -255,7 +255,7 @@ export default function App() {
           </div>
         </section>
       ) : (
-        <Today jobs={jobs} statuses={statuses} lastBuild={lastBuild} onStatus={changeStatus} />
+        <Today jobs={jobs} statuses={statuses} lastBuild={lastBuild} profile={profile} onStatus={changeStatus} />
       )}
 
       {showSettings && (

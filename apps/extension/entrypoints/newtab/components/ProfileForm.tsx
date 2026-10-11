@@ -2,11 +2,13 @@ import { useState, type KeyboardEvent } from "react";
 import {
   PRESET_COMPANIES,
   SENIORITY_CHOICES,
+  WORK_AUTH_CHOICES,
   companyKey,
   parseCompanyInput,
   type CompanySource,
   type JobProfile,
   type Seniority,
+  type WorkAuth,
 } from "@job-newtab/agent-core";
 
 const ROLE_SUGGESTIONS = [
@@ -119,6 +121,40 @@ export function ProfileForm({ value, onChange }: { value: JobProfile; onChange: 
       </section>
 
       <section className="pf-section">
+        <h3>Work authorization</h3>
+        <select
+          className="pf-input pf-select"
+          value={value.workAuth}
+          onChange={(e) => set("workAuth", e.target.value as WorkAuth)}
+        >
+          {WORK_AUTH_CHOICES.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+        {value.workAuth !== "none" && value.workAuth !== "ead" && (
+          <div className="pf-checks">
+            <label className="pf-check">
+              <input
+                type="checkbox"
+                checked={value.wantsGreenCard}
+                onChange={(e) => set("wantsGreenCard", e.target.checked)}
+              />
+              I also want green card (PERM) sponsorship
+            </label>
+          </div>
+        )}
+        {value.workAuth !== "none" && (
+          <p className="pf-hint">
+            Jobs whose posting rules you out (no sponsorship, citizens only, clearance) are capped and marked. Each
+            employer's H-1B and PERM filings are looked up on PERM Tracker (permtracker.app): only company names are
+            sent. Filing history shows what an employer has done, not what it will do for this role. Not legal advice.
+          </p>
+        )}
+      </section>
+
+      <section className="pf-section">
         <h3>About you</h3>
         <div className="pf-label">Resume (paste the text — it makes match scores meaningful)</div>
         <textarea
@@ -134,7 +170,7 @@ export function ProfileForm({ value, onChange }: { value: JobProfile; onChange: 
           rows={3}
           value={value.notes}
           onChange={(e) => set("notes", e.target.value)}
-          placeholder={'e.g. "Needs H-1B sponsorship", "No crypto or gambling", "Prefer Series B+ startups"'}
+          placeholder={'e.g. "No crypto or gambling", "Prefer Series B+ startups"'}
         />
       </section>
     </div>
