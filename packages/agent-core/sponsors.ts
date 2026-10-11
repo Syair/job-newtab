@@ -192,6 +192,33 @@ export async function lookupSponsors(names: string[], opts: LookupOptions): Prom
   return result;
 }
 
+/**
+ * Companies among these jobs that have no record, or one older than the cache
+ * window. Jobs found before the profile needed sponsorship, or before records
+ * existed, are filled in this way without waiting for a search to find them again.
+ */
+export function companiesToRefresh(jobs: Iterable<Pick<Job, "company" | "sponsor">>, now: Date): string[] {
+  const freshAfter = now.getTime() - SPONSOR_DEFAULTS.cacheDays * 86_400_000;
+  const names = new Set<string>();
+  for (const job of jobs) {
+    if (!job.sponsor || Date.parse(job.sponsor.checkedAt) < freshAfter) names.add(job.company.trim());
+  }
+  return [...names];
+}
+
+/** The jobs with each company's record attached where one was found. */
+export function withSponsors<T extends Pick<Job, "company" | "sponsor">>(
+  jobs: Record<string, T>,
+  records: Map<string, SponsorRecord>,
+): Record<string, T> {
+  const next = { ...jobs };
+  for (const [id, job] of Object.entries(jobs)) {
+    const record = records.get(job.company.trim());
+    if (record) next[id] = { ...job, sponsor: record };
+  }
+  return next;
+}
+
 /** Drop entries a month old, and keep the cache to a few thousand companies. */
 function pruneCache(cache: Record<string, SponsorRecord>, now: Date): Record<string, SponsorRecord> {
   const cutoff = now.getTime() - 30 * 86_400_000;
@@ -278,6 +305,75 @@ export function sponsorSummary(
   }
   if (record.match === "possible" && tone === "good") tone = "warn";
   return { tone, short, lines };
+}
+
+// ---------------------------------------------------------------------------
+// the row marks
+// ---------------------------------------------------------------------------
+
+/** yes: files it. maybe: a gap or a weak match. no: ruled out or never files it. unknown: not checked. */
+export type MarkState = "yes" | "maybe" | "no" | "unknown";
+
+export interface VisaMark {
+  kind: "h1b" | "perm";
+  label: string;
+  state: MarkState;
+  /** Why, for the hover text. */
+  reason: string;
+}
+
+/**
+ * One mark per thing this person needs from an employer: H-1B for OPT and
+ * H-1B holders, PERM for anyone who wants a green card. A posting that rules
+ * them out turns every mark to no.
+ */
+export function visaMarks(
+  job: Pick<Job, "visa" | "sponsor">,
+  profile: Pick<JobProfile, "workAuth" | "wantsGreenCard">,
+  now: Date,
+): VisaMark[] {
+  if (!needsSponsorship(profile)) return [];
+  const kinds: VisaMark["kind"][] = [];
+  if (needsH1b(profile.workAuth)) kinds.push("h1b");
+  if (wantsGreenCard(profile)) kinds.push("perm");
+
+  const signals = job.visa ?? [];
+  const blocking = blockingSignal(signals, profile);
+  const record = job.sponsor;
+  const possible = record?.match === "possible" ? ` (possible match: ${record.employer})` : "";
+
+  return kinds.map((kind): VisaMark => {
+    const label = kind === "h1b" ? "H-1B" : "PERM";
+    if (blocking) return { kind, label, state: "no", reason: `Posting: ${SIGNAL_SHORT[blocking].toLowerCase()}` };
+    if (kind === "h1b" && signals.includes("sponsors")) {
+      return { kind, label, state: "yes", reason: "Posting says it sponsors visas" };
+    }
+    if (!record) return { kind, label, state: "unknown", reason: "Filings not checked yet" };
+    if (record.match === "none") {
+      return { kind, label, state: "unknown", reason: `No filings found under "${record.query}"` };
+    }
+    const weak = (state: MarkState): MarkState => (state === "yes" && record.match === "possible" ? "maybe" : state);
+
+    if (kind === "h1b") {
+      const lcas = record.h1bLcas ?? 0;
+      return lcas > 0
+        ? { kind, label, state: weak("yes"), reason: `${lcas.toLocaleString("en-US")} H-1B applications on record${possible}` }
+        : { kind, label, state: "no", reason: `No H-1B applications on record${possible}` };
+    }
+    const perm = record.perm;
+    const filed = perm ? perm.decided + perm.pending : 0;
+    if (!perm || filed === 0) return { kind, label, state: "no", reason: `No PERM filings on record${possible}` };
+    const quietDays = perm.newestFiling ? (now.getTime() - Date.parse(perm.newestFiling)) / 86_400_000 : null;
+    if (perm.decided >= 20 && quietDays !== null && quietDays > PERM_QUIET_DAYS) {
+      return { kind, label, state: "maybe", reason: `No new PERM filing since ${monthYear(perm.newestFiling!)}${possible}` };
+    }
+    return {
+      kind,
+      label,
+      state: weak("yes"),
+      reason: `${filed.toLocaleString("en-US")} PERM cases, ${perm.filingsLast12Months} filed in the last 12 months${possible}`,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

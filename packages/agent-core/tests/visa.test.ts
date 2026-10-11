@@ -5,10 +5,13 @@ import { buildKickoffMessage } from "../prompt";
 import {
   PERM_TRACKER,
   SPONSOR_CACHE_KEY,
+  companiesToRefresh,
   lookupSponsors,
+  withSponsors,
   parseSponsorLookup,
   sponsorSummary,
   visaBadge,
+  visaMarks,
   type SponsorRecord,
 } from "../sponsors";
 import type { KVStore } from "../types";
@@ -249,6 +252,52 @@ describe("lookupSponsors", () => {
       },
     });
     expect([...out.keys()]).toEqual(["B Co"]);
+  });
+});
+
+describe("visaMarks", () => {
+  const meta = parseSponsorLookup("Meta", lookupBody(), NOW);
+  const recent = lookupBody({
+    perm: { published: 323, certified: 298, denied: 1, pending: 25, newestFiling: "2026-10-09", filingsLast12Months: 55 },
+  });
+  const stripe = parseSponsorLookup("Stripe", { ...recent, data: { ...recent.data, match: "exact" } }, NOW);
+  const opt = { workAuth: "opt" as const, wantsGreenCard: true };
+  const states = (m: ReturnType<typeof visaMarks>) => m.map((x) => `${x.label}:${x.state}`);
+
+  it("shows only what the person needs", () => {
+    expect(states(visaMarks({ sponsor: stripe }, { workAuth: "h1b-transfer", wantsGreenCard: false }, NOW))).toEqual(["H-1B:yes"]);
+    expect(states(visaMarks({ sponsor: stripe }, { workAuth: "ead", wantsGreenCard: false }, NOW))).toEqual(["PERM:yes"]);
+    expect(visaMarks({ sponsor: stripe }, { workAuth: "none", wantsGreenCard: true }, NOW)).toEqual([]);
+  });
+  it("turns every mark to no when the posting rules the person out", () => {
+    expect(states(visaMarks({ visa: ["citizens-only"], sponsor: stripe }, opt, NOW))).toEqual(["H-1B:no", "PERM:no"]);
+  });
+  it("marks a weak match and a PERM pause as maybe, and unchecked as unknown", () => {
+    expect(states(visaMarks({ sponsor: meta }, opt, NOW))).toEqual(["H-1B:maybe", "PERM:maybe"]);
+    expect(states(visaMarks({}, opt, NOW))).toEqual(["H-1B:unknown", "PERM:unknown"]);
+  });
+});
+
+describe("backfilling stored jobs", () => {
+  const fresh = { ...parseSponsorLookup("Meta", lookupBody(), NOW), checkedAt: "2026-10-09T00:00:00Z" };
+  const stale = { ...fresh, checkedAt: "2026-09-01T00:00:00Z" };
+  it("lists companies with no record or a stale one, once each", () => {
+    const names = companiesToRefresh(
+      [
+        { company: "Meta", sponsor: fresh },
+        { company: "Stripe" },
+        { company: "Stripe " },
+        { company: "Figma", sponsor: stale },
+      ],
+      NOW,
+    );
+    expect(names).toEqual(["Stripe", "Figma"]);
+  });
+  it("attaches records by company and leaves the rest alone", () => {
+    const jobs = { a: job({ id: "a", company: "Stripe" }), b: job({ id: "b", company: "Unknown" }) };
+    const out = withSponsors(jobs, new Map([["Stripe", fresh]]));
+    expect(out.a.sponsor).toBe(fresh);
+    expect(out.b).toBe(jobs.b);
   });
 });
 

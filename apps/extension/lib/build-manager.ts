@@ -1,10 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
+  companiesToRefresh,
+  lookupSponsors,
   mergeJobs,
+  needsSponsorship,
   pipelineForAgent,
   profileProblems,
   runJobScout,
   trackedJobs,
+  withSponsors,
   type RunPhase,
 } from "@job-newtab/agent-core";
 import { rebuildIntervalHours, rebuildIntervalMs, shouldAutoRebuild } from "./auto-rebuild";
@@ -57,6 +61,7 @@ export class BuildManager {
   private controller: AbortController | null = null;
   private running = false;
   private keepalive: ReturnType<typeof setInterval> | null = null;
+  private refreshingSponsors = false;
   private lastSnapshotAt = 0;
   private snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -78,6 +83,9 @@ export class BuildManager {
         break;
       case "cancel":
         this.cancel();
+        break;
+      case "refreshSponsors":
+        void this.refreshSponsors();
         break;
     }
   }
@@ -259,10 +267,45 @@ export class BuildManager {
       this.controller = null;
       this.stopKeepalive();
     }
+    // Jobs kept from earlier builds may still have no filing record.
+    void this.refreshSponsors();
   }
 
   cancel() {
     this.controller?.abort();
+  }
+
+  // ---- visa sponsorship ----------------------------------------------------
+
+  /**
+   * Attach employer filing records to stored jobs that lack them: jobs found
+   * before the profile needed sponsorship, or before records existed, are never
+   * sent to the agent again, so a search would not fill them in. Skipped while a
+   * build runs; that build ends by calling this.
+   */
+  async refreshSponsors() {
+    if (this.running || this.refreshingSponsors) return;
+    const profile = await loadProfile();
+    if (!profile || !needsSponsorship(profile)) return;
+    this.refreshingSponsors = true;
+    try {
+      const [jobs, statuses] = await Promise.all([loadJobs(), loadStatuses()]);
+      const open = Object.values(jobs).filter((j) => statuses[j.id]?.status !== "dismissed");
+      const names = companiesToRefresh(open, new Date());
+      if (names.length === 0) return;
+      const records = await lookupSponsors(names, {
+        fetchImpl: (url) => fetch(url),
+        store: extensionStore,
+        log: (line) => console.log("[sponsors]", line),
+      });
+      // A build may have started and written jobs meanwhile: re-read, and let it win.
+      if (records.size === 0 || this.running) return;
+      await browser.storage.local.set({ [KEYS.jobs]: withSponsors(await loadJobs(), records) });
+    } catch (error) {
+      console.warn("[BuildManager] sponsor refresh failed", error);
+    } finally {
+      this.refreshingSponsors = false;
+    }
   }
 
   // ---- callback fan-out ----------------------------------------------------

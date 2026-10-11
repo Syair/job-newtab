@@ -1,7 +1,10 @@
 // Stands in for the chrome.* APIs so the built new-tab page can be previewed in
 // a plain browser tab. ?state=key | onboarding | first | board | running
+// ?visa=none previews a profile from before work authorization was a field.
 (() => {
-  const requested = new URLSearchParams(location.search).get("state") || "board";
+  const params = new URLSearchParams(location.search);
+  const requested = params.get("state") || "board";
+  const legacyVisa = params.get("visa") === "none";
   const running = requested === "running";
   const state = running ? "board" : requested;
   const day = 86400000;
@@ -15,9 +18,9 @@
     boards: { linkedin: true, indeed: true },
     companies: [{ ats: "greenhouse", slug: "figma", name: "Figma" }],
     resume: "Senior frontend engineer, 6 years React/TypeScript…",
-    workAuth: "opt",
-    wantsGreenCard: true,
-    notes: "No crypto.",
+    workAuth: legacyVisa ? "none" : "opt",
+    wantsGreenCard: !legacyVisa,
+    notes: legacyVisa ? "No crypto. Needs H-1B sponsorship." : "No crypto.",
   };
   // Illustrative filing records in PERM Tracker's shape; not real counts.
   const rec = (query, employer, lcas, decided, pending, newestDaysAgo, last12, match = "exact") => ({
@@ -95,6 +98,7 @@
           onMessage: { addListener: (f) => msgL.push(f), removeListener() {} },
           onDisconnect: event(),
           postMessage(m) {
+            (globalThis.__posted ??= []).push(m.kind);
             if (m.kind === "subscribe") setTimeout(() => msgL.forEach((f) => f({ kind: "snapshot", state: running
               ? { running: true, phase: "analyzing", stepIndex: 3, detail: "read", narration: "Read 96 career-board candidates and 4 LinkedIn result pages. Scoring against the resume now — the Figma and OpenAI frontend roles look strongest so far.", logs: ["career boards: 96 new candidates from 46 companies", "mounted candidates.json -> /mnt/session/uploads/candidates.json (182311b)", "mounted boards/linkedin_0.html", "job pages: 8 of 10 descriptions read", "mounted boards/details.json", "sandbox:grep", "sandbox:read"], error: null }
               : { running: false, phase: null, stepIndex: 0, detail: "", narration: "", logs: [], error: null } })), 0);

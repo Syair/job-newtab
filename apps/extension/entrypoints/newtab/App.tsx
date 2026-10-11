@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { DEFAULT_MODEL, type JobProfile, type JobStatus, type ScoutModel, type StoredJob } from "@job-newtab/agent-core";
+import {
+  DEFAULT_MODEL,
+  companiesToRefresh,
+  needsSponsorship,
+  type JobProfile,
+  type JobStatus,
+  type ScoutModel,
+  type StoredJob,
+} from "@job-newtab/agent-core";
 import { DEFAULT_REBUILD_INTERVAL_HOURS } from "@/lib/auto-rebuild";
 import { BUILD_STEPS } from "@/lib/protocol";
 import {
@@ -53,7 +61,14 @@ export default function App() {
     setLastBuild(b);
   }, []);
 
-  const { state, build, cancel } = useJobBuild(() => void reloadJobs());
+  const { state, build, cancel, refreshSponsors } = useJobBuild(() => void reloadJobs());
+
+  // Jobs without an employer filing record (found before the profile needed
+  // sponsorship) get one from the worker; it writes jobs, which reloads them here.
+  const missingRecords = profile && needsSponsorship(profile) ? companiesToRefresh(Object.values(jobs), new Date()).length : 0;
+  useEffect(() => {
+    if (missingRecords > 0 && !state.running) refreshSponsors();
+  }, [missingRecords > 0, profile?.workAuth, state.running, refreshSponsors]);
 
   // Once a build finishes, drop back to the board.
   useEffect(() => {

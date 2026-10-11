@@ -2,6 +2,8 @@
  * One design system for every screen: newsprint paper, ink, one red accent,
  * a serif for anything editorial and a sans for data and controls. No cards,
  * pills or colored score boxes: hierarchy comes from type, rules and space.
+ * The one exception is the visa marks, which must read at a glance: --ok and
+ * --warn exist for them only.
  */
 :root {
   --paper: #f7f5ef;
@@ -11,6 +13,8 @@
   --rule: #dcd7ca;
   --wash: #efece3;
   --accent: #9b2c1f;
+  --ok: #2e7a43;
+  --warn: #a5690a;
   --serif: "Newsreader Variable", Georgia, "Times New Roman", serif;
   --sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -35,6 +39,8 @@
     --rule: #35322a;
     --wash: #201e17;
     --accent: #e1806a;
+    --ok: #7cc68f;
+    --warn: #e2b04f;
   }
 }
 
@@ -401,24 +407,67 @@ a.q-title:hover {
 .q-meta.alert {
   color: var(--accent);
 }
-/* Visa status in words, not a pill: weight for a sponsor, italic for a gap, red for a block. */
-.visa-chip {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink);
+/* Visa marks: a fixed column, so they line up down the list. */
+.q-main.with-visa {
+  grid-template-columns: 28px minmax(0, 1.4fr) minmax(0, 1fr) 132px 72px 52px;
 }
-.visa-chip::after {
-  content: " · ";
-  font-weight: 400;
-  color: var(--faint);
+.q-marks {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
 }
-.visa-chip.warn {
-  font-weight: 500;
-  font-style: italic;
-  color: var(--soft);
+.vm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 650 12px/1 var(--sans);
 }
-.visa-chip.bad {
+.vm svg {
+  flex: none;
+}
+.vm svg circle {
+  fill: currentColor;
+}
+.vm svg path {
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.vm.yes {
+  color: var(--ok);
+}
+.vm.maybe {
+  color: var(--warn);
+}
+.vm.no {
   color: var(--accent);
+}
+.vm.no .vm-label {
+  text-decoration: line-through;
+}
+.vm.unknown {
+  color: var(--faint);
+  font-weight: 500;
+}
+.vm.unknown svg circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+}
+.vm.unknown svg path {
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .q-when {
   font-size: 12px;
@@ -564,6 +613,14 @@ a.q-title:hover {
     grid-template-columns: 28px minmax(0, 1fr) auto;
     grid-template-areas: "logo name fit" "logo meta when";
     row-gap: 2px;
+  }
+  .q-main.with-visa {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    grid-template-areas: "logo name fit" "logo meta when" "logo marks marks";
+  }
+  .q-marks {
+    grid-area: marks;
+    padding-top: 4px;
   }
   .q-main > :first-child {
     grid-area: logo;

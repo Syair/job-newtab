@@ -10,8 +10,11 @@ import {
   sponsorSummary,
   trackedJobs,
   visaBadge,
+  visaMarks,
   weekStart,
   type JobProfile,
+  type MarkState,
+  type VisaMark,
   type JobStatus,
   type StoredJob,
   type TrackedJob,
@@ -28,6 +31,9 @@ const PAGE = 30;
 
 /** Jobs opened with Apply and not yet answered, so the question survives a reload. */
 const PENDING_KEY = "job-newtab:pending-apply";
+/** Free-text notes that ask for sponsorship, from before work authorization was a profile field. */
+const SPONSOR_NOTE = /\b(?:h-?1b|sponsor\w*|visa|opt|green card|perm)\b/i;
+
 /** Whether jobs that rule out the user's visa status are hidden from the queue. */
 const HIDE_BLOCKED_KEY = "job-newtab:hide-non-sponsors";
 
@@ -139,6 +145,12 @@ export function Today({
           <Stat value={appliedThisWeek} label="applied this week" />
         </div>
         {lastBuild?.summary && <p className="today-summary">{lastBuild.summary}</p>}
+        {!visa && SPONSOR_NOTE.test(profile.notes) && (
+          <p className="quiet-note">
+            Your notes mention visa sponsorship. Set <b>Work authorization</b> in Settings to see each employer's H-1B
+            and PERM filings and to mark jobs that rule you out.
+          </p>
+        )}
       </section>
 
       {followUps.length > 0 && (
@@ -262,19 +274,29 @@ function JobRow({
   const [open, setOpen] = useState(false);
   const concerns = jobConcerns(job.concerns);
   const age = shortAge(job.postedAt);
-  const badge = visaBadge(job, profile, now);
+  const visa = needsSponsorship(profile);
+  const marks = visaMarks(job, profile, now);
   return (
     <li className={open ? "q-row open" : "q-row"}>
-      <button type="button" className="q-main" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button
+        type="button"
+        className={visa ? "q-main with-visa" : "q-main"}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
         <CompanyMark company={job.company} domain={job.companyDomain} size={28} />
         <span className="q-name">
           <span className="q-co">{job.company}</span>
           <span className="q-title">{job.title}</span>
         </span>
-        <span className="q-meta">
-          {badge && <span className={`visa-chip ${badge.tone}`}>{badge.text}</span>}
-          {[job.location, job.salary].filter(Boolean).join(" · ")}
-        </span>
+        <span className="q-meta">{[job.location, job.salary].filter(Boolean).join(" · ")}</span>
+        {visa && (
+          <span className="q-marks">
+            {marks.map((m) => (
+              <VisaMarkIcon key={m.kind} mark={m} />
+            ))}
+          </span>
+        )}
         <span className="q-when">{isNew ? <span className="mark">New</span> : age}</span>
         <span className="q-fit" title="Fit score out of 100. Open the row for its parts.">
           <small>fit</small>
@@ -341,6 +363,25 @@ function JobRow({
         </div>
       )}
     </li>
+  );
+}
+
+const MARK_WORD: Record<MarkState, string> = { yes: "files", maybe: "check", no: "no", unknown: "unknown" };
+
+/** One visa need as an icon and its name: ✓ files it, ! a gap, ✕ ruled out, ? not known. */
+function VisaMarkIcon({ mark }: { mark: VisaMark }) {
+  return (
+    <span className={`vm ${mark.state}`} title={mark.reason}>
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+        <circle cx="8" cy="8" r="7.25" />
+        {mark.state === "yes" && <path d="M4.6 8.3l2.2 2.2 4.6-4.8" />}
+        {mark.state === "no" && <path d="M5.3 5.3l5.4 5.4M10.7 5.3l-5.4 5.4" />}
+        {mark.state === "maybe" && <path d="M8 4.3v4.6M8 11.4v.3" />}
+        {mark.state === "unknown" && <path d="M6.1 6.2a1.95 1.95 0 1 1 2.6 1.85c-.45.17-.7.5-.7.95v.4M8 11.5v.2" />}
+      </svg>
+      <span className="vm-label">{mark.label}</span>
+      <span className="sr-only">: {MARK_WORD[mark.state]}</span>
+    </span>
   );
 }
 
