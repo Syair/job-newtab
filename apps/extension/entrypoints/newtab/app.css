@@ -578,6 +578,14 @@ a.q-title:hover {
 .q-visa .q-source a {
   color: inherit;
 }
+.q-visa .q-action b {
+  color: var(--accent);
+}
+.q-visa .q-action a {
+  color: inherit;
+  text-decoration: underline;
+  font-size: 13px;
+}
 .more-btn {
   margin-top: 14px;
   font-size: 13px;

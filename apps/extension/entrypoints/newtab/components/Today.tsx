@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   PERM_TRACKER,
   VISA_SIGNAL_LABEL,
+  activeOverrides,
   daysBetween,
   isCardOnly,
   isFollowUpDue,
   jobConcerns,
   needsSponsorship,
+  overrideHeadline,
   sponsorSummary,
   trackedJobs,
   visaBadge,
@@ -14,6 +16,8 @@ import {
   weekStart,
   type JobProfile,
   type MarkState,
+  type OverridesFile,
+  type VisaOverride,
   type VisaMark,
   type JobStatus,
   type StoredJob,
@@ -80,12 +84,15 @@ export function Today({
   statuses,
   lastBuild,
   profile,
+  overrides,
   onStatus,
 }: {
   jobs: Record<string, StoredJob>;
   statuses: Record<string, StatusEntry>;
   lastBuild?: LastBuild;
   profile: JobProfile;
+  /** Government actions on visa programs, by employer. */
+  overrides: OverridesFile;
   onStatus: OnStatus;
 }) {
   const now = useMemo(() => new Date(), [statuses]);
@@ -122,7 +129,7 @@ export function Today({
   const unreviewed = Object.values(jobs)
     .filter((j) => !statuses[j.id])
     .sort(byFit);
-  const blocked = (j: StoredJob) => visaBadge(j, profile, now)?.tone === "bad";
+  const blocked = (j: StoredJob) => visaBadge(j, profile, now, activeOverrides(j, overrides, now))?.tone === "bad";
   const hiddenCount = visa && hideBlocked ? unreviewed.filter(blocked).length : 0;
   const queue = hiddenCount ? unreviewed.filter((j) => !blocked(j)) : unreviewed;
   const saved = Object.values(jobs)
@@ -177,6 +184,7 @@ export function Today({
                 key={job.id}
                 job={job}
                 profile={profile}
+                overrides={overrides}
                 now={now}
                 isNew={false}
                 pending={pending.includes(job.id)}
@@ -210,6 +218,7 @@ export function Today({
                 key={job.id}
                 job={job}
                 profile={profile}
+                overrides={overrides}
                 now={now}
                 isNew={added.has(job.id)}
                 pending={pending.includes(job.id)}
@@ -261,6 +270,7 @@ interface RowHandlers {
 function JobRow({
   job,
   profile,
+  overrides,
   now,
   isNew,
   pending,
@@ -270,12 +280,21 @@ function JobRow({
   notYet,
   save,
   skip,
-}: { job: StoredJob; profile: JobProfile; now: Date; isNew: boolean; pending: boolean; saved?: boolean } & RowHandlers) {
+}: {
+  job: StoredJob;
+  profile: JobProfile;
+  overrides: OverridesFile;
+  now: Date;
+  isNew: boolean;
+  pending: boolean;
+  saved?: boolean;
+} & RowHandlers) {
   const [open, setOpen] = useState(false);
   const concerns = jobConcerns(job.concerns);
   const age = shortAge(job.postedAt);
   const visa = needsSponsorship(profile);
-  const marks = visaMarks(job, profile, now);
+  const actions = activeOverrides(job, overrides, now);
+  const marks = visaMarks(job, profile, now, actions);
   return (
     <li className={open ? "q-row open" : "q-row"}>
       <button
@@ -348,7 +367,7 @@ function JobRow({
                 ))}
               </ul>
             )}
-            {needsSponsorship(profile) && <VisaDetail job={job} profile={profile} now={now} />}
+            {needsSponsorship(profile) && <VisaDetail job={job} profile={profile} now={now} actions={actions} />}
             <p className="q-source">
               {[
                 age ? `Posted ${age}` : "",
@@ -386,14 +405,37 @@ function VisaMarkIcon({ mark }: { mark: VisaMark }) {
 }
 
 /** What the posting says about visas and what the employer has filed, with credit for the data. */
-function VisaDetail({ job, profile, now }: { job: StoredJob; profile: JobProfile; now: Date }) {
+function VisaDetail({
+  job,
+  profile,
+  now,
+  actions,
+}: {
+  job: StoredJob;
+  profile: JobProfile;
+  now: Date;
+  actions: VisaOverride[];
+}) {
   const said = (job.visa ?? []).map((s) => VISA_SIGNAL_LABEL[s]);
-  const summary = job.sponsor ? sponsorSummary(job.sponsor, profile, now) : null;
-  if (!said.length && !summary) return null;
+  const summary = job.sponsor ? sponsorSummary(job.sponsor, profile, now, actions) : null;
+  if (!said.length && !summary && !actions.length) return null;
   return (
     <div className="q-visa">
       <div className="q-visa-head">Visa sponsorship</div>
       <ul className="q-list">
+        {actions.map((o) => (
+          <li key={o.id} className="q-action">
+            <b>{overrideHeadline(o)}.</b> {o.summary}{" "}
+            {o.sources.map((src, i) => (
+              <span key={src.url}>
+                {i > 0 ? " · " : ""}
+                <a href={src.url} target="_blank" rel="noreferrer">
+                  {src.title}
+                </a>
+              </span>
+            ))}
+          </li>
+        ))}
         {said.map((line) => (
           <li key={line}>Posting: {line.charAt(0).toLowerCase() + line.slice(1)}.</li>
         ))}
