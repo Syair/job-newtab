@@ -1,6 +1,7 @@
 import {
   DEFAULT_MODEL,
   MODEL_CHOICES,
+  OVERRIDES_KEY,
   STORAGE_KEYS as AGENT_KEYS,
   normalizeProfile,
   type JobProfile,
@@ -39,6 +40,8 @@ export const KEYS = {
   lastBuild: "lastBuild",
   /** Completed builds so far; drives the rotation through board searches. */
   buildCount: "buildCount",
+  /** Government actions on visa programs, fetched from the repository. */
+  visaOverrides: OVERRIDES_KEY,
 } as const;
 
 export interface Settings {

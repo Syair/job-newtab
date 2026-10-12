@@ -2,7 +2,7 @@
   "name": "@job-newtab/extension",
   "description": "MV3 browser extension: a new-tab page that shows fresh jobs matched to your profile.",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",

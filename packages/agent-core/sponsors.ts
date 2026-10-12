@@ -11,6 +11,7 @@
 import type { Job } from "./jobs";
 import type { JobProfile } from "./profile";
 import type { KVStore } from "./types";
+import type { VisaOverride } from "./overrides";
 import { blockingSignal, needsH1b, needsSponsorship, wantsGreenCard, type VisaSignal } from "./visa";
 
 export const PERM_TRACKER = {
@@ -233,8 +234,40 @@ function pruneCache(cache: Record<string, SponsorRecord>, now: Date): Record<str
 // reading a record for one person
 // ---------------------------------------------------------------------------
 
-/** No PERM filing for this long, from an employer that used to file, reads as a pause. */
-export const PERM_QUIET_DAYS = 120;
+/** Fewer PERM cases than this is too little history to read a gap from. */
+const PERM_HISTORY_MIN = 20;
+/** New filings reach DOL's case status days to weeks late, so a shorter gap means nothing. */
+export const PERM_QUIET_MIN_DAYS = 21;
+/** An employer that used to file reads as paused after this long, however rarely it filed. */
+export const PERM_QUIET_MAX_DAYS = 120;
+/** Between those, a gap this many times the employer's usual spacing reads as a pause. */
+const PERM_QUIET_SPACINGS = 8;
+
+export interface PermGap {
+  /** Days since the newest filing. */
+  days: number;
+  /** Average days between filings over the last 12 months; null when there were none. */
+  usualDays: number | null;
+  /** The gap is long for this employer. */
+  quiet: boolean;
+}
+
+/**
+ * How long the employer has gone without a new PERM filing, against its own
+ * pace: a few weeks of silence from one that files daily is a pause, while
+ * one that files a few times a year gets the full PERM_QUIET_MAX_DAYS.
+ */
+export function permGap(perm: SponsorRecord["perm"], now: Date): PermGap | null {
+  const newest = perm?.newestFiling ? Date.parse(perm.newestFiling) : NaN;
+  if (!perm || Number.isNaN(newest)) return null;
+  const days = Math.max(0, Math.floor((now.getTime() - newest) / 86_400_000));
+  const usualDays = perm.filingsLast12Months > 0 ? 365 / perm.filingsLast12Months : null;
+  const limit =
+    usualDays === null
+      ? PERM_QUIET_MAX_DAYS
+      : Math.min(PERM_QUIET_MAX_DAYS, Math.max(PERM_QUIET_MIN_DAYS, PERM_QUIET_SPACINGS * usualDays));
+  return { days, usualDays, quiet: perm.decided + perm.pending >= PERM_HISTORY_MIN && days > limit };
+}
 
 export interface SponsorSummary {
   /** good: files what this person needs. warn: a gap or a weak match. bad: never files what they need. */
@@ -246,34 +279,67 @@ export interface SponsorSummary {
 }
 
 const compact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n));
-const monthYear = (iso: string) =>
-  new Date(`${iso.slice(0, 10)}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+const day = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00Z`);
+const monthYear = (iso: string) => day(iso).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+const fullDate = (iso: string) =>
+  day(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
-/** What a record means for this profile's visa needs. */
+/** "No new PERM filing in 26 days, after 617 in the last 12 months" */
+function quietLine(perm: NonNullable<SponsorRecord["perm"]>, gap: PermGap): string {
+  const when = gap.days > 90 ? `since ${monthYear(perm.newestFiling!)}` : `in ${gap.days} days`;
+  const pace = perm.filingsLast12Months > 0 ? `, after ${perm.filingsLast12Months.toLocaleString("en-US")} in the last 12 months` : "";
+  return `No new PERM filing ${when}${pace}`;
+}
+
+/** "PERM suspended since Oct 8, 2026" */
+export function overrideHeadline(o: VisaOverride): string {
+  return `${o.kind === "perm" ? "PERM" : "H-1B"} ${o.status} since ${fullDate(o.since)}`;
+}
+
+/** Stands in for a company that has not been looked up, so an action on it still counts. */
+function noRecord(now: Date): SponsorRecord {
+  return { query: "", match: "none", employer: null, url: "", h1bLcas: null, perm: null, asOf: null, checkedAt: now.toISOString() };
+}
+
+/**
+ * What a record means for this profile's visa needs. `active` are the
+ * government actions in effect for this employer (see activeOverrides). The
+ * details show their text separately, so here they set only the tone and the
+ * short form.
+ */
 export function sponsorSummary(
   record: SponsorRecord,
   profile: Pick<JobProfile, "workAuth" | "wantsGreenCard">,
   now: Date,
+  active: VisaOverride[],
 ): SponsorSummary {
-  if (record.match === "none") {
-    return {
-      tone: "warn",
-      short: "No filings found",
-      lines: [`No H-1B or PERM filings found under "${record.query}". The employer may file under another name.`],
-    };
-  }
-
   const h1b = needsH1b(profile.workAuth);
   const gc = wantsGreenCard(profile);
+  const h1bAction = h1b ? active.find((o) => o.kind === "h1b") : undefined;
+  const permAction = gc ? active.find((o) => o.kind === "perm") : undefined;
+
+  if (record.match === "none") {
+    const lines = record.query
+      ? [`No H-1B or PERM filings found under "${record.query}". The employer may file under another name.`]
+      : [];
+    if (h1bAction) return { tone: "bad", short: `H-1B ${h1bAction.status}`, lines };
+    if (permAction) return { tone: profile.workAuth === "ead" ? "bad" : "warn", short: `PERM ${permAction.status}`, lines };
+    return { tone: "warn", short: "No filings found", lines };
+  }
+
   const lcas = record.h1bLcas ?? 0;
   const perm = record.perm;
   const permFiled = perm ? perm.decided + perm.pending : 0;
-  const quietDays = perm?.newestFiling ? (now.getTime() - Date.parse(perm.newestFiling)) / 86_400_000 : null;
-  const quiet = perm !== null && perm.decided >= 20 && quietDays !== null && quietDays > PERM_QUIET_DAYS;
+  const gap = permGap(perm, now);
+  const quiet = !!gap?.quiet;
 
   const lines: string[] = [];
   if (record.match === "possible") lines.push(`Matched to ${record.employer ?? "a similar name"} (possible match).`);
-  lines.push(lcas > 0 ? `H-1B: ${lcas.toLocaleString("en-US")} labor condition applications on record.` : "H-1B: no labor condition applications on record.");
+  lines.push(
+    lcas > 0
+      ? `H-1B: ${lcas.toLocaleString("en-US")} labor condition applications (LCAs) on record, all years combined: a count of past filings, not of recent hiring.`
+      : "H-1B: no labor condition applications on record.",
+  );
   if (perm && permFiled > 0) {
     const share = perm.certified + perm.denied > 0 ? Math.round((perm.certified / (perm.certified + perm.denied)) * 100) : null;
     lines.push(
@@ -284,14 +350,20 @@ export function sponsorSummary(
   } else {
     lines.push("PERM: no green card filings on record.");
   }
-  if (quiet && perm?.newestFiling) lines.push(`No new PERM filing since ${monthYear(perm.newestFiling)}: green card filings may be paused.`);
+  if (quiet && perm && gap && !permAction) lines.push(`${quietLine(perm, gap)}: green card filings may be paused.`);
 
   const parts = [lcas > 0 ? `H-1B ${compact(lcas)}` : "", permFiled > 0 ? `PERM ${compact(permFiled)}` : ""].filter(Boolean);
   let tone: SponsorSummary["tone"] = "good";
   let short = parts.join(" · ");
-  if (h1b && lcas === 0) {
+  if (h1bAction) {
+    tone = "bad";
+    short = `H-1B ${h1bAction.status}`;
+  } else if (h1b && lcas === 0) {
     tone = "bad";
     short = "No H-1B filings";
+  } else if (permAction) {
+    tone = profile.workAuth === "ead" ? "bad" : "warn";
+    short = parts.length ? `${short} · PERM ${permAction.status}` : `PERM ${permAction.status}`;
   } else if (gc && permFiled === 0) {
     tone = profile.workAuth === "ead" ? "bad" : "warn";
     short = parts.length ? `${short} · no PERM` : "No PERM filings";
@@ -325,12 +397,14 @@ export interface VisaMark {
 /**
  * One mark per thing this person needs from an employer: H-1B for OPT and
  * H-1B holders, PERM for anyone who wants a green card. A posting that rules
- * them out turns every mark to no.
+ * them out turns every mark to no; a government action turns its program's
+ * mark to no, whatever the record shows.
  */
 export function visaMarks(
   job: Pick<Job, "visa" | "sponsor">,
   profile: Pick<JobProfile, "workAuth" | "wantsGreenCard">,
   now: Date,
+  active: VisaOverride[],
 ): VisaMark[] {
   if (!needsSponsorship(profile)) return [];
   const kinds: VisaMark["kind"][] = [];
@@ -345,6 +419,8 @@ export function visaMarks(
   return kinds.map((kind): VisaMark => {
     const label = kind === "h1b" ? "H-1B" : "PERM";
     if (blocking) return { kind, label, state: "no", reason: `Posting: ${SIGNAL_SHORT[blocking].toLowerCase()}` };
+    const action = active.find((o) => o.kind === kind);
+    if (action) return { kind, label, state: "no", reason: `${overrideHeadline(action)} (Department of Labor)` };
     if (kind === "h1b" && signals.includes("sponsors")) {
       return { kind, label, state: "yes", reason: "Posting says it sponsors visas" };
     }
@@ -357,16 +433,14 @@ export function visaMarks(
     if (kind === "h1b") {
       const lcas = record.h1bLcas ?? 0;
       return lcas > 0
-        ? { kind, label, state: weak("yes"), reason: `${lcas.toLocaleString("en-US")} H-1B applications on record${possible}` }
-        : { kind, label, state: "no", reason: `No H-1B applications on record${possible}` };
+        ? { kind, label, state: weak("yes"), reason: `${lcas.toLocaleString("en-US")} H-1B LCAs on record, all years${possible}` }
+        : { kind, label, state: "no", reason: `No H-1B LCAs on record${possible}` };
     }
     const perm = record.perm;
     const filed = perm ? perm.decided + perm.pending : 0;
     if (!perm || filed === 0) return { kind, label, state: "no", reason: `No PERM filings on record${possible}` };
-    const quietDays = perm.newestFiling ? (now.getTime() - Date.parse(perm.newestFiling)) / 86_400_000 : null;
-    if (perm.decided >= 20 && quietDays !== null && quietDays > PERM_QUIET_DAYS) {
-      return { kind, label, state: "maybe", reason: `No new PERM filing since ${monthYear(perm.newestFiling!)}${possible}` };
-    }
+    const gap = permGap(perm, now);
+    if (gap?.quiet) return { kind, label, state: "maybe", reason: `${quietLine(perm, gap)}${possible}` };
     return {
       kind,
       label,
@@ -390,23 +464,24 @@ const SIGNAL_SHORT: Record<VisaSignal, string> = {
 
 /**
  * One badge per job for someone who needs sponsorship: what the posting rules
- * out comes first, then the employer's record, then a posting that says it sponsors.
+ * out comes first, then a government action, then the employer's record, then
+ * a posting that says it sponsors.
  */
 export function visaBadge(
   job: Pick<Job, "visa" | "sponsor">,
   profile: Pick<JobProfile, "workAuth" | "wantsGreenCard">,
   now: Date,
+  active: VisaOverride[],
 ): { tone: SponsorSummary["tone"]; text: string } | null {
   if (!needsSponsorship(profile)) return null;
   const signals = job.visa ?? [];
   const blocking = blockingSignal(signals, profile);
   if (blocking) return { tone: "bad", text: SIGNAL_SHORT[blocking] };
-  if (job.sponsor) {
-    const summary = sponsorSummary(job.sponsor, profile, now);
-    // The posting's own word beats a missing or weak record.
-    if (signals.includes("sponsors") && summary.tone !== "good") return { tone: "good", text: SIGNAL_SHORT.sponsors };
-    return { tone: summary.tone, text: summary.short };
-  }
-  if (signals.includes("sponsors")) return { tone: "good", text: SIGNAL_SHORT.sponsors };
-  return null;
+  const summary = sponsorSummary(job.sponsor ?? noRecord(now), profile, now, active);
+  const acted = (needsH1b(profile.workAuth) && active.some((o) => o.kind === "h1b")) ||
+    (wantsGreenCard(profile) && active.some((o) => o.kind === "perm"));
+  if (acted) return { tone: summary.tone, text: summary.short };
+  // The posting's own word beats a missing or weak record.
+  if (signals.includes("sponsors") && (!job.sponsor || summary.tone !== "good")) return { tone: "good", text: SIGNAL_SHORT.sponsors };
+  return job.sponsor ? { tone: summary.tone, text: summary.short } : null;
 }

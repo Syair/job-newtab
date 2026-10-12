@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "updated": "2026-10-12",
+  "overrides": [
+    {
+      "id": "dol-perm-suspension-2026-10-08",
+      "kind": "perm",
+      "status": "suspended",
+      "since": "2026-10-08",
+      "until": null,
+      "summary": "The Department of Labor is not accepting new PERM applications from this employer, and its pending ones are on hold. No end date has been announced. H-1B filings are not affected.",
+      "sources": [
+        {
+          "title": "Ellis: PERM suspension for Microsoft, Adobe and others",
+          "url": "https://www.ellis.com/resources/perm-suspension-microsoft-adobe"
+        },
+        {
+          "title": "Wolfsdorf Rosenthal: DOL announces PERM suspensions",
+          "url": "https://wolfsdorf.com/dol-announces-perm-suspensions-for-microsoft-adobe-and-major-it-firms/"
+        }
+      ],
+      "employers": [
+        { "name": "Microsoft", "aliases": ["Microsoft Corporation"] },
+        { "name": "Adobe", "aliases": ["Adobe Inc.", "Adobe Systems"] },
+        {
+          "name": "Cognizant",
+          "aliases": ["Cognizant Technology Solutions", "Cognizant Technology Solutions US Corporation"]
+        },
+        { "name": "Infosys", "aliases": ["Infosys Limited", "Infosys Ltd."] },
+        { "name": "Tata Consultancy Services", "aliases": ["TCS", "Tata Consultancy Services Limited"] },
+        { "name": "Wipro", "aliases": ["Wipro Limited"] },
+        { "name": "HCLTech", "aliases": ["HCL Technologies", "HCL America", "HCL America, Inc."] },
+        { "name": "Capgemini", "aliases": ["Capgemini America", "Capgemini America, Inc."] }
+      ]
+    }
+  ]
+}

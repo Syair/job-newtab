@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  BUNDLED_OVERRIDES,
   DEFAULT_MODEL,
   companiesToRefresh,
+  loadOverrides,
   needsSponsorship,
   type JobProfile,
   type JobStatus,
+  type OverridesFile,
   type ScoutModel,
   type StoredJob,
 } from "@job-newtab/agent-core";
@@ -44,6 +47,7 @@ export default function App() {
   const [jobs, setJobs] = useState<Record<string, StoredJob>>({});
   const [statuses, setStatuses] = useState<Record<string, StatusEntry>>({});
   const [lastBuild, setLastBuild] = useState<LastBuild | undefined>();
+  const [overrides, setOverrides] = useState<OverridesFile>(BUNDLED_OVERRIDES);
   /** A session left mid-flight, offered as "Resume interrupted search". */
   const [resumable, setResumable] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -82,6 +86,7 @@ export default function App() {
       loadProfile(),
       extensionStore.get<string>(KEYS.activeSessionId),
       reloadJobs(),
+      loadOverrides(extensionStore).then(setOverrides),
     ]);
     setApiKey(settings.apiKey);
     setProfile(storedProfile);
@@ -100,6 +105,7 @@ export default function App() {
     const listener = (changes: Record<string, unknown>, area: string) => {
       if (area !== "local") return;
       if (KEYS.jobs in changes || KEYS.statuses in changes || KEYS.lastBuild in changes) void reloadJobs();
+      if (KEYS.visaOverrides in changes) void loadOverrides(extensionStore).then(setOverrides);
     };
     browser.storage.onChanged.addListener(listener);
     return () => browser.storage.onChanged.removeListener(listener);
@@ -270,7 +276,7 @@ export default function App() {
           </div>
         </section>
       ) : (
-        <Today jobs={jobs} statuses={statuses} lastBuild={lastBuild} profile={profile} onStatus={changeStatus} />
+        <Today jobs={jobs} statuses={statuses} lastBuild={lastBuild} profile={profile} overrides={overrides} onStatus={changeStatus} />
       )}
 
       {showSettings && (

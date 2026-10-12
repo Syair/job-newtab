@@ -166,7 +166,7 @@ describe("parseSponsorLookup", () => {
 describe("sponsorSummary", () => {
   const meta = parseSponsorLookup("Meta", lookupBody(), NOW);
   it("flags a PERM pause for someone who wants a green card", () => {
-    const s = sponsorSummary(meta, { workAuth: "h1b-transfer", wantsGreenCard: true }, NOW);
+    const s = sponsorSummary(meta, { workAuth: "h1b-transfer", wantsGreenCard: true }, NOW, []);
     expect(s.tone).toBe("warn");
     expect(s.short).toMatch(/PERM quiet$/);
     expect(s.lines.join(" ")).toMatch(/No new PERM filing since May 2026/);
@@ -174,18 +174,18 @@ describe("sponsorSummary", () => {
   });
   it("calls an employer with no H-1B filings bad for an H-1B need", () => {
     const none = parseSponsorLookup("Tiny", lookupBody({ h1bLcas: 0, perm: null }), NOW);
-    expect(sponsorSummary(none, { workAuth: "opt", wantsGreenCard: false }, NOW).tone).toBe("bad");
+    expect(sponsorSummary(none, { workAuth: "opt", wantsGreenCard: false }, NOW, []).tone).toBe("bad");
   });
   it("lets the posting's own word beat a weak record in the badge", () => {
     const none = parseSponsorLookup("Tiny", lookupBody({ h1bLcas: 0, perm: null }), NOW);
-    expect(visaBadge({ visa: ["sponsors"], sponsor: none }, { workAuth: "opt", wantsGreenCard: false }, NOW)).toEqual({
+    expect(visaBadge({ visa: ["sponsors"], sponsor: none }, { workAuth: "opt", wantsGreenCard: false }, NOW, [])).toEqual({
       tone: "good",
       text: "Sponsors visas",
     });
-    expect(visaBadge({ visa: ["citizens-only"], sponsor: meta }, { workAuth: "opt", wantsGreenCard: false }, NOW)?.tone).toBe(
+    expect(visaBadge({ visa: ["citizens-only"], sponsor: meta }, { workAuth: "opt", wantsGreenCard: false }, NOW, [])?.tone).toBe(
       "bad",
     );
-    expect(visaBadge({ sponsor: meta }, { workAuth: "none", wantsGreenCard: false }, NOW)).toBeNull();
+    expect(visaBadge({ sponsor: meta }, { workAuth: "none", wantsGreenCard: false }, NOW, [])).toBeNull();
   });
 });
 
@@ -265,16 +265,16 @@ describe("visaMarks", () => {
   const states = (m: ReturnType<typeof visaMarks>) => m.map((x) => `${x.label}:${x.state}`);
 
   it("shows only what the person needs", () => {
-    expect(states(visaMarks({ sponsor: stripe }, { workAuth: "h1b-transfer", wantsGreenCard: false }, NOW))).toEqual(["H-1B:yes"]);
-    expect(states(visaMarks({ sponsor: stripe }, { workAuth: "ead", wantsGreenCard: false }, NOW))).toEqual(["PERM:yes"]);
-    expect(visaMarks({ sponsor: stripe }, { workAuth: "none", wantsGreenCard: true }, NOW)).toEqual([]);
+    expect(states(visaMarks({ sponsor: stripe }, { workAuth: "h1b-transfer", wantsGreenCard: false }, NOW, []))).toEqual(["H-1B:yes"]);
+    expect(states(visaMarks({ sponsor: stripe }, { workAuth: "ead", wantsGreenCard: false }, NOW, []))).toEqual(["PERM:yes"]);
+    expect(visaMarks({ sponsor: stripe }, { workAuth: "none", wantsGreenCard: true }, NOW, [])).toEqual([]);
   });
   it("turns every mark to no when the posting rules the person out", () => {
-    expect(states(visaMarks({ visa: ["citizens-only"], sponsor: stripe }, opt, NOW))).toEqual(["H-1B:no", "PERM:no"]);
+    expect(states(visaMarks({ visa: ["citizens-only"], sponsor: stripe }, opt, NOW, []))).toEqual(["H-1B:no", "PERM:no"]);
   });
   it("marks a weak match and a PERM pause as maybe, and unchecked as unknown", () => {
-    expect(states(visaMarks({ sponsor: meta }, opt, NOW))).toEqual(["H-1B:maybe", "PERM:maybe"]);
-    expect(states(visaMarks({}, opt, NOW))).toEqual(["H-1B:unknown", "PERM:unknown"]);
+    expect(states(visaMarks({ sponsor: meta }, opt, NOW, []))).toEqual(["H-1B:maybe", "PERM:maybe"]);
+    expect(states(visaMarks({}, opt, NOW, []))).toEqual(["H-1B:unknown", "PERM:unknown"]);
   });
 });
 

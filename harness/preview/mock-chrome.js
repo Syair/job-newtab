@@ -46,6 +46,8 @@
   };
   const jobs = [
     job("greenhouse:figma:1", "Senior Software Engineer, Editor Platform", "Figma", "San Francisco, CA • New York, NY", "greenhouse", [39, 30, 15], { salary: "$200K – $280K", sponsor: rec("Figma", "Figma, Inc.", 1420, 210, 18, 6, 41), take: "Your design-system rewrite is this team's roadmap; WebGL is the one gap." }),
+    // PERM suspended by DOL on 2026-10-08 (visa-overrides.json); counts from PERM Tracker on 2026-10-12.
+    job("linkedin:15", "Software Engineer II, Edge Web Platform", "Microsoft", "Redmond, WA", "linkedin", [33, 26, 15], { age: 1, sponsor: rec("Microsoft", "Microsoft Corporation", 58652, 6875, 598, 26, 617), take: "Browser platform work on your stack; check the green card timeline first." }),
     job("ashby:openai:2", "Frontend Software Engineer, ChatGPT", "OpenAI", "San Francisco", "ashby", [37, 29, 10], { salary: "$245K – $385K", sponsor: rec("OpenAI", "OpenAI OpCo, LLC", 2310, 160, 44, 3, 88), concerns: ["On-site 3 days a week"], take: "Product frontend at your level and top pay, if three office days work." }),
     job("linkedin:3", "Software Engineer II, Web", "Affirm", "Remote US", "linkedin", [28, 24, 15], { age: 2, sponsor: rec("Affirm", "Affirm, Inc.", 1650, 240, 12, 9, 30), concerns: ["Only the listing card was read", "Pay not listed"], take: "Mid level and fully remote: a solid fallback with a fast loop." }),
     job("greenhouse:coinbase:4", "Senior Frontend Engineer, Wallet", "Coinbase", "Remote - USA", "greenhouse", [38, 31, 15], { dealbreaker: "Crypto company; you said no crypto" }),

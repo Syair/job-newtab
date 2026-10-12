@@ -6,6 +6,7 @@ import {
   needsSponsorship,
   pipelineForAgent,
   profileProblems,
+  refreshOverrides,
   runJobScout,
   trackedJobs,
   withSponsors,
@@ -112,6 +113,7 @@ export class BuildManager {
    * rebuild. The single-flight lock is the arbiter that keeps these from racing.
    */
   async tick() {
+    void this.refreshVisaOverrides();
     if (this.running) {
       // A run is live but the worker may have just woken; make sure the
       // self-keepalive is ticking so the active turn stays warm.
@@ -306,6 +308,17 @@ export class BuildManager {
     } finally {
       this.refreshingSponsors = false;
     }
+  }
+
+  /** Keep the list of government actions current. The page reads it; builds do not. */
+  private async refreshVisaOverrides() {
+    const profile = await loadProfile();
+    if (!profile || !needsSponsorship(profile)) return;
+    await refreshOverrides({
+      fetchImpl: (url) => fetch(url, { cache: "no-cache" }),
+      store: extensionStore,
+      log: (line) => console.log("[overrides]", line),
+    });
   }
 
   // ---- callback fan-out ----------------------------------------------------
