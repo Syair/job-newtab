@@ -4,7 +4,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/front-page-dark.png">
-  <img alt="The Today view: counts for the day, the agent's one-line summary, follow-ups due, saved jobs, then every open match on one line with Apply, Save and Skip." src="docs/front-page.png">
+  <img alt="The Today view: counts for the day, the agent's one-line summary, follow-ups due, saved jobs, then every open match on one line with H-1B and PERM sponsorship marks, Apply, Save and Skip." src="docs/front-page.png">
 </picture>
 
 <sub>Screenshots use demo data.</sub>
