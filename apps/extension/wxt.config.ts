@@ -28,6 +28,8 @@ export default defineConfig({
       "https://api.lever.co/*",
       "https://api.ashbyhq.com/*",
       "https://api.anthropic.com/*",
+      // Employer H-1B / PERM filing records, only when the profile needs sponsorship.
+      "https://permtracker.app/*",
     ],
   },
 });

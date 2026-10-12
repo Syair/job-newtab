@@ -7,6 +7,7 @@
 import { isRemoteText, matchesLocation, matchesRole, matchesSeniority, normalizeCountry } from "./filter";
 import type { AtsKind, CompanySource, JobProfile, JobSource } from "./profile";
 import { htmlToText, truncate } from "./text";
+import { visaSignals, type VisaSignal } from "./visa";
 
 /** One listing, normalized across sources. What the agent reads from candidates.json. */
 export interface RawJob {
@@ -27,11 +28,19 @@ export interface RawJob {
   salary?: string;
   department?: string;
   description: string;
+  /** Visa rules the full description states, when it states any. */
+  visa?: VisaSignal[];
 }
 
 export type FetchLike = (url: string) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 const DESCRIPTION_CHARS = 1200;
+
+/** The excerpt for the agent, plus the visa rules read from the whole text. */
+function describe(full: string): Pick<RawJob, "description" | "visa"> {
+  const visa = visaSignals(full);
+  return { description: truncate(full, DESCRIPTION_CHARS), ...(visa.length ? { visa } : {}) };
+}
 
 // ---------------------------------------------------------------------------
 // per-ATS fetch + normalize
@@ -69,7 +78,7 @@ export function normalizeGreenhouse(company: CompanySource, data: { jobs?: Green
       url: j.absolute_url,
       postedAt: j.first_published ?? j.updated_at,
       department: j.departments?.[0]?.name,
-      description: truncate(htmlToText(j.content ?? ""), DESCRIPTION_CHARS),
+      ...describe(htmlToText(j.content ?? "")),
     };
   });
 }
@@ -107,7 +116,7 @@ export function normalizeLever(company: CompanySource, data: LeverJob[]): RawJob
       postedAt: j.createdAt ? new Date(j.createdAt).toISOString() : undefined,
       salary: formatSalaryRange(j.salaryRange),
       department: j.categories?.department ?? j.categories?.team,
-      description: truncate(`${j.descriptionPlain ?? ""}\n${lists}`.trim(), DESCRIPTION_CHARS),
+      ...describe(`${j.descriptionPlain ?? ""}\n${lists}`.trim()),
     };
   });
 }
@@ -164,7 +173,7 @@ export function normalizeAshby(company: CompanySource, data: { jobs?: AshbyJob[]
         salary:
           j.compensation?.compensationTierSummary ?? j.compensation?.scrapeableCompensationSalarySummary ?? undefined,
         department: j.department,
-        description: truncate(j.descriptionPlain ?? "", DESCRIPTION_CHARS),
+        ...describe(j.descriptionPlain ?? ""),
       };
     });
 }

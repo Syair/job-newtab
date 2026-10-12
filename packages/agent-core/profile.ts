@@ -20,6 +20,17 @@ export const SENIORITY_CHOICES: { id: Seniority; label: string }[] = [
   { id: "manager", label: "Manager / Director" },
 ];
 
+/** What the person needs from an employer to work in the US. */
+export type WorkAuth = "none" | "opt" | "h1b-new" | "h1b-transfer" | "ead";
+
+export const WORK_AUTH_CHOICES: { id: WorkAuth; label: string }[] = [
+  { id: "none", label: "No sponsorship needed (US citizen or green card)" },
+  { id: "opt", label: "F-1 OPT / STEM OPT: will need an H-1B" },
+  { id: "h1b-new", label: "Need a new H-1B (no US work authorization yet)" },
+  { id: "h1b-transfer", label: "On an H-1B now: need a transfer" },
+  { id: "ead", label: "Have an EAD (H-4, L-2 …): need green card sponsorship" },
+];
+
 /** A company whose public job board we read through its ATS API. */
 export interface CompanySource {
   ats: AtsKind;
@@ -43,7 +54,11 @@ export interface JobProfile {
   companies: CompanySource[];
   /** Pasted resume text. Optional, but it is what makes the match scores meaningful. */
   resume: string;
-  /** Free-text preferences: "no crypto", "visa sponsorship required", "prefer Series B+". */
+  /** Visa status. Anything but "none" turns on the posting checks and the employer filing lookup. */
+  workAuth: WorkAuth;
+  /** Also wants green card (PERM) sponsorship. Implied by "ead". */
+  wantsGreenCard: boolean;
+  /** Free-text preferences: "no crypto", "prefer Series B+". */
   notes: string;
 }
 
@@ -56,6 +71,8 @@ export const EMPTY_PROFILE: JobProfile = {
   boards: { linkedin: true, indeed: true },
   companies: [],
   resume: "",
+  workAuth: "none",
+  wantsGreenCard: false,
   notes: "",
 };
 
@@ -85,6 +102,8 @@ export function normalizeProfile(raw: Partial<JobProfile> | undefined): JobProfi
     roles: raw?.roles ?? [],
     seniority: raw?.seniority ?? [],
     locations: raw?.locations ?? [],
+    workAuth: WORK_AUTH_CHOICES.some((c) => c.id === raw?.workAuth) ? raw!.workAuth! : "none",
+    wantsGreenCard: raw?.wantsGreenCard === true,
     companies,
   };
 }

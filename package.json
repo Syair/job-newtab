@@ -9,6 +9,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "ats:smoke": "tsx harness/ats-smoke.ts",
+    "visa:smoke": "tsx harness/visa-smoke.ts",
     "agent:run": "tsx --env-file=.env harness/run-agent.ts"
   },
   "devDependencies": {

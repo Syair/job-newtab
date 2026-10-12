@@ -14,8 +14,9 @@
 - **A daily queue, not a feed.** Each job gets a 0–100 fit score from role (40), skills from your resume (35), location (15) and freshness (10); a job that breaks one of your rules is capped at 29 and says which rule. Click a row for the agent's take, the reasons it fits, what to check (level, sponsorship, on-site, your "no crypto" rule) and the score's parts. **Apply** opens the posting and, when you come back, asks whether you applied. **Skip** clears the row and tells the agent what you don't want. The day is done when the list is empty.
 - **Only what's new to you.** Career-board jobs it has already shown you are not sent to the agent again, and anything found since the last search is marked New. The same opening found on LinkedIn and on the company's board appears once, with the direct link.
 - **A tracker built in.** Save jobs, then move them through Applied → Interviewing → Offer / Closed. The Tracker view shows applications per week, follow-ups due (a week with no reply), jobs saved but not applied, and every job you acted on with notes; export it as CSV. The agent reads the same pipeline before each search, so it never re-lists what you applied to and ranks openings like the ones you skipped lower. Follow-ups due show at the top of Today too, with **Followed up** to reset the clock.
+- **Visa sponsorship, if you need it.** Pick your status in the profile (OPT / STEM OPT, new H-1B, H-1B transfer, EAD needing a green card) and each row shows what matters for it. Postings that say they don't sponsor, need U.S. citizenship or a green card, or need a security clearance are read in code from the full description, then capped and marked. Each employer's H-1B and PERM filings come from [PERM Tracker](https://permtracker.app): how many H-1B applications it has filed, its PERM cases, and whether new PERM filings have gone quiet. **Hide non-sponsors** clears the jobs that rule you out. Filing history shows what an employer has done, not what it will do for one role, and none of this is legal advice.
 - **Backups.** Removing an extension deletes its data, so Settings has **Download backup** / **Restore from file**: one JSON file with your profile, settings, jobs and tracker (never the API key). The API-key screen offers the restore too, for reinstalls.
-- **No server.** The extension runs the agent with your own Anthropic API key. Everything else stays in your browser.
+- **No server.** The extension runs the agent with your own Anthropic API key. Everything else stays in your browser, apart from the company-name lookups above when you need sponsorship.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/tracker-dark.png">
@@ -57,7 +58,8 @@ Searches repeat automatically (daily by default; 6/12/24/48 h in Settings) once 
 ## Privacy
 
 - Sent to the Anthropic API for each search: your profile (roles, places, preferences, **resume text**), the matching career-board listings, the sanitized HTML of up to 6 LinkedIn / Indeed result pages, and the description text of up to 20 job pages. The agent session and every uploaded file are deleted when the search ends.
-- The extension only has access to linkedin.com, indeed.com, the three ATS APIs and api.anthropic.com. It does not read your browsing history.
+- The extension only has access to linkedin.com, indeed.com, the three ATS APIs, api.anthropic.com and permtracker.app. It does not read your browsing history.
+- Only if your profile needs visa sponsorship: the company name of each match is sent to PERM Tracker (permtracker.app) to look up its filings, from your own browser and IP address. Nothing else about you is sent. Results are cached for a week.
 - Company logos load from Google's favicon service (`www.google.com/s2/favicons`), which sees the company domains shown on your page and nothing else. Unknown companies get a monogram instead.
 - Your API key, profile and jobs are stored in `chrome.storage.local`. Anyone with access to your browser profile can read them. Do not publish this to a store as-is.
 - The data survives disabling the extension, restarting Chrome and updates; only removing the extension deletes it. Backup files contain your resume and tracker in plain JSON: keep them somewhere private.
@@ -75,6 +77,7 @@ pnpm dev          # WXT with hot reload
 pnpm typecheck    # all packages
 pnpm test         # unit tests (no network, no API calls)
 pnpm ats:smoke    # hit the real Greenhouse/Lever/Ashby APIs for every preset company (free)
+pnpm visa:smoke   # run the visa-rule patterns over every preset company's live board and print each hit (free)
 pnpm agent:run    # one real end-to-end search via the API (needs ANTHROPIC_API_KEY in .env; costs credits)
 node harness/preview/serve.mjs   # after `pnpm build`: preview the new-tab UI with mock data at localhost:5180/?state=board
 ```

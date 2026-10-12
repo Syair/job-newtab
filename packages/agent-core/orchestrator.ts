@@ -11,12 +11,13 @@ import {
   type BoardCard,
   type BoardDetail,
 } from "./board-details";
-import { parseJobsFile } from "./jobs";
+import { parseJobsFile, type Job } from "./jobs";
 import type { JobProfile } from "./profile";
 import { OUTPUT_PATH, buildKickoffMessage } from "./prompt";
 import { DEFAULTS } from "./schemas";
 import { SEARCH_DEFAULTS, buildSearchTargets } from "./search-urls";
 import { STORAGE_KEYS, ensureAgent, ensureEnvironment, type ScoutModel } from "./setup";
+import { lookupSponsors } from "./sponsors";
 import type {
   BoardPageRef,
   BrowserBridge,
@@ -27,6 +28,7 @@ import type {
   RunCallbacks,
   RunPhase,
 } from "./types";
+import { applyVisaSignals, needsSponsorship, type VisaSignal } from "./visa";
 
 type SessionEvent = Anthropic.Beta.Sessions.BetaManagedAgentsSessionEvent;
 type CustomToolUse = Anthropic.Beta.Sessions.BetaManagedAgentsAgentCustomToolUseEvent;
@@ -243,6 +245,9 @@ export async function runJobScout(opts: RunOptions): Promise<JobScoutResult> {
     const deliverable = await collectDeliverable(client, sessionId, finalMessage, emit, signal);
     const parsed = parseJobsFile(deliverable.text, now);
     for (const reason of parsed.dropped) emit.log(`dropped job ${reason}`);
+    if (needsSponsorship(opts.profile)) {
+      parsed.file.jobs = await addVisaInfo(parsed.file.jobs, { ...opts, now, emit });
+    }
     emit.phase("done");
     return { jobs: parsed.file, dropped: parsed.dropped, sessionId, source: deliverable.source };
   } finally {
@@ -251,6 +256,7 @@ export async function runJobScout(opts: RunOptions): Promise<JobScoutResult> {
     emit.phase("cleanup");
     await Promise.allSettled(uploadedFileIds.map((id) => client.beta.files.delete(id)));
     await store.remove(STORAGE_KEYS.uploadedFileIds);
+    await store.remove(STORAGE_KEYS.visaSignals);
     await deleteSessionWhenSettled(client, sessionId!).catch(() => {});
     await store.remove(STORAGE_KEYS.activeSessionId);
   }
@@ -337,10 +343,10 @@ async function runGetJobSources(ctx: ToolContext): Promise<GetJobSourcesResult> 
   // ---- Job pages for the most relevant board cards, so skills can be scored
   // from the description rather than the title alone.
   let boardDetails: GetJobSourcesResult["boardDetails"] = null;
+  const details: BoardDetail[] = [];
   const picks = pickDetailCards(cardsByPage, { roles: profile.roles, seenIds, max: DETAIL_DEFAULTS.max });
   if (picks.length > 0) {
     emit.phase("scraping", `${picks.length} job pages`);
-    const details: BoardDetail[] = [];
     const keep = (card: BoardCard, url: string, html: string) => {
       const detail = extractDetail(card, html);
       if (detail) details.push(detail);
@@ -397,6 +403,13 @@ async function runGetJobSources(ctx: ToolContext): Promise<GetJobSourcesResult> 
     }
   }
 
+  // What each posting says about visas, applied once the agent has scored them.
+  // Stored, not kept in memory, so a reattached run still has it.
+  const visa: Record<string, VisaSignal[]> = {};
+  for (const job of ats.jobs) if (job.visa) visa[job.id] = job.visa;
+  for (const detail of details) if (detail.visa) visa[detail.id] = detail.visa;
+  await ctx.store.set(STORAGE_KEYS.visaSignals, visa);
+
   if (!candidates && boardPages.length === 0) {
     throw new Error(
       `No job sources could be loaded. ` +
@@ -405,6 +418,38 @@ async function runGetJobSources(ctx: ToolContext): Promise<GetJobSourcesResult> 
   }
 
   return { candidates, companies: ats.stats, boardPages, boardDetails, failed, skippedAlreadySeen: seenIds.size };
+}
+
+// ---------------------------------------------------------------------------
+// visa sponsorship
+// ---------------------------------------------------------------------------
+
+/**
+ * Cap jobs whose posting rules out this person's visa status, and attach each
+ * employer's filing record. A failed lookup leaves the job without a record;
+ * it never fails the build.
+ */
+async function addVisaInfo(jobs: Job[], ctx: RunOptions & { now: Date; emit: Emit }): Promise<Job[]> {
+  const signals = (await ctx.store.get<Record<string, VisaSignal[]>>(STORAGE_KEYS.visaSignals)) ?? {};
+  const records = await lookupSponsors(
+    jobs.map((j) => j.company),
+    {
+      fetchImpl: ctx.bridge.fetch ?? ((url) => fetch(url)),
+      store: ctx.store,
+      now: ctx.now,
+      log: ctx.emit.log,
+    },
+  ).catch((err) => {
+    ctx.emit.log(`sponsor lookups failed: ${String(err)}`);
+    return new Map();
+  });
+  return jobs
+    .map((job) => {
+      const next = applyVisaSignals(job, signals[job.id] ?? [], ctx.profile);
+      const record = records.get(job.company.trim());
+      return record ? { ...next, sponsor: record } : next;
+    })
+    .sort((a, b) => b.matchScore - a.matchScore);
 }
 
 // ---------------------------------------------------------------------------

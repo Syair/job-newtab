@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  PERM_TRACKER,
+  VISA_SIGNAL_LABEL,
   daysBetween,
   isCardOnly,
   isFollowUpDue,
   jobConcerns,
+  needsSponsorship,
+  sponsorSummary,
   trackedJobs,
+  visaBadge,
+  visaMarks,
   weekStart,
+  type JobProfile,
+  type MarkState,
+  type VisaMark,
   type JobStatus,
   type StoredJob,
   type TrackedJob,
@@ -22,6 +31,27 @@ const PAGE = 30;
 
 /** Jobs opened with Apply and not yet answered, so the question survives a reload. */
 const PENDING_KEY = "job-newtab:pending-apply";
+/** Free-text notes that ask for sponsorship, from before work authorization was a profile field. */
+const SPONSOR_NOTE = /\b(?:h-?1b|sponsor\w*|visa|opt|green card|perm)\b/i;
+
+/** Whether jobs that rule out the user's visa status are hidden from the queue. */
+const HIDE_BLOCKED_KEY = "job-newtab:hide-non-sponsors";
+
+function loadFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveFlag(key: string, on: boolean) {
+  try {
+    localStorage.setItem(key, on ? "1" : "0");
+  } catch {
+    // Storage blocked: the toggle resets on reload.
+  }
+}
 
 function loadPending(): string[] {
   try {
@@ -49,11 +79,13 @@ export function Today({
   jobs,
   statuses,
   lastBuild,
+  profile,
   onStatus,
 }: {
   jobs: Record<string, StoredJob>;
   statuses: Record<string, StatusEntry>;
   lastBuild?: LastBuild;
+  profile: JobProfile;
   onStatus: OnStatus;
 }) {
   const now = useMemo(() => new Date(), [statuses]);
@@ -62,8 +94,11 @@ export function Today({
   const [pending, setPending] = useState<string[]>(loadPending);
   const [undo, setUndo] = useState<{ id: string; label: string; previous: JobStatus | null } | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [hideBlocked, setHideBlocked] = useState(() => loadFlag(HIDE_BLOCKED_KEY));
+  const visa = needsSponsorship(profile);
 
   useEffect(() => savePending(pending), [pending]);
+  useEffect(() => saveFlag(HIDE_BLOCKED_KEY, hideBlocked), [hideBlocked]);
   useEffect(() => {
     if (!undo) return;
     const timer = setTimeout(() => setUndo(null), 8000);
@@ -84,9 +119,12 @@ export function Today({
   };
 
   const byFit = (a: StoredJob, b: StoredJob) => b.matchScore - a.matchScore;
-  const queue = Object.values(jobs)
+  const unreviewed = Object.values(jobs)
     .filter((j) => !statuses[j.id])
     .sort(byFit);
+  const blocked = (j: StoredJob) => visaBadge(j, profile, now)?.tone === "bad";
+  const hiddenCount = visa && hideBlocked ? unreviewed.filter(blocked).length : 0;
+  const queue = hiddenCount ? unreviewed.filter((j) => !blocked(j)) : unreviewed;
   const saved = Object.values(jobs)
     .filter((j) => statuses[j.id]?.status === "saved")
     .sort(byFit);
@@ -107,6 +145,12 @@ export function Today({
           <Stat value={appliedThisWeek} label="applied this week" />
         </div>
         {lastBuild?.summary && <p className="today-summary">{lastBuild.summary}</p>}
+        {!visa && SPONSOR_NOTE.test(profile.notes) && (
+          <p className="quiet-note">
+            Your notes mention visa sponsorship. Set <b>Work authorization</b> in Settings to see each employer's H-1B
+            and PERM filings and to mark jobs that rule you out.
+          </p>
+        )}
       </section>
 
       {followUps.length > 0 && (
@@ -129,7 +173,16 @@ export function Today({
           </h2>
           <ol className="queue">
             {saved.map((job) => (
-              <JobRow key={job.id} job={job} isNew={false} pending={pending.includes(job.id)} saved {...handlers} />
+              <JobRow
+                key={job.id}
+                job={job}
+                profile={profile}
+                now={now}
+                isNew={false}
+                pending={pending.includes(job.id)}
+                saved
+                {...handlers}
+              />
             ))}
           </ol>
         </section>
@@ -138,13 +191,30 @@ export function Today({
       <section className="block">
         <h2 className="block-head">
           To review <span>{queue.length}</span>
+          {visa && (
+            <label
+              className="head-toggle"
+              title="Hide jobs whose posting rules out your visa status, or whose employer never files for it"
+            >
+              <input type="checkbox" checked={hideBlocked} onChange={(e) => setHideBlocked(e.target.checked)} />
+              Hide non-sponsors{hiddenCount ? ` (${hiddenCount})` : ""}
+            </label>
+          )}
         </h2>
         {queue.length === 0 ? (
           <p className="quiet-note">All caught up. New matches appear after the next search.</p>
         ) : (
           <ol className="queue">
             {shown.map((job) => (
-              <JobRow key={job.id} job={job} isNew={added.has(job.id)} pending={pending.includes(job.id)} {...handlers} />
+              <JobRow
+                key={job.id}
+                job={job}
+                profile={profile}
+                now={now}
+                isNew={added.has(job.id)}
+                pending={pending.includes(job.id)}
+                {...handlers}
+              />
             ))}
           </ol>
         )}
@@ -190,6 +260,8 @@ interface RowHandlers {
 
 function JobRow({
   job,
+  profile,
+  now,
   isNew,
   pending,
   saved,
@@ -198,19 +270,33 @@ function JobRow({
   notYet,
   save,
   skip,
-}: { job: StoredJob; isNew: boolean; pending: boolean; saved?: boolean } & RowHandlers) {
+}: { job: StoredJob; profile: JobProfile; now: Date; isNew: boolean; pending: boolean; saved?: boolean } & RowHandlers) {
   const [open, setOpen] = useState(false);
   const concerns = jobConcerns(job.concerns);
   const age = shortAge(job.postedAt);
+  const visa = needsSponsorship(profile);
+  const marks = visaMarks(job, profile, now);
   return (
     <li className={open ? "q-row open" : "q-row"}>
-      <button type="button" className="q-main" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button
+        type="button"
+        className={visa ? "q-main with-visa" : "q-main"}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
         <CompanyMark company={job.company} domain={job.companyDomain} size={28} />
         <span className="q-name">
           <span className="q-co">{job.company}</span>
           <span className="q-title">{job.title}</span>
         </span>
         <span className="q-meta">{[job.location, job.salary].filter(Boolean).join(" · ")}</span>
+        {visa && (
+          <span className="q-marks">
+            {marks.map((m) => (
+              <VisaMarkIcon key={m.kind} mark={m} />
+            ))}
+          </span>
+        )}
         <span className="q-when">{isNew ? <span className="mark">New</span> : age}</span>
         <span className="q-fit" title="Fit score out of 100. Open the row for its parts.">
           <small>fit</small>
@@ -262,6 +348,7 @@ function JobRow({
                 ))}
               </ul>
             )}
+            {needsSponsorship(profile) && <VisaDetail job={job} profile={profile} now={now} />}
             <p className="q-source">
               {[
                 age ? `Posted ${age}` : "",
@@ -276,6 +363,55 @@ function JobRow({
         </div>
       )}
     </li>
+  );
+}
+
+const MARK_WORD: Record<MarkState, string> = { yes: "files", maybe: "check", no: "no", unknown: "unknown" };
+
+/** One visa need as an icon and its name: ✓ files it, ! a gap, ✕ ruled out, ? not known. */
+function VisaMarkIcon({ mark }: { mark: VisaMark }) {
+  return (
+    <span className={`vm ${mark.state}`} title={mark.reason}>
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+        <circle cx="8" cy="8" r="7.25" />
+        {mark.state === "yes" && <path d="M4.6 8.3l2.2 2.2 4.6-4.8" />}
+        {mark.state === "no" && <path d="M5.3 5.3l5.4 5.4M10.7 5.3l-5.4 5.4" />}
+        {mark.state === "maybe" && <path d="M8 4.3v4.6M8 11.4v.3" />}
+        {mark.state === "unknown" && <path d="M6.1 6.2a1.95 1.95 0 1 1 2.6 1.85c-.45.17-.7.5-.7.95v.4M8 11.5v.2" />}
+      </svg>
+      <span className="vm-label">{mark.label}</span>
+      <span className="sr-only">: {MARK_WORD[mark.state]}</span>
+    </span>
+  );
+}
+
+/** What the posting says about visas and what the employer has filed, with credit for the data. */
+function VisaDetail({ job, profile, now }: { job: StoredJob; profile: JobProfile; now: Date }) {
+  const said = (job.visa ?? []).map((s) => VISA_SIGNAL_LABEL[s]);
+  const summary = job.sponsor ? sponsorSummary(job.sponsor, profile, now) : null;
+  if (!said.length && !summary) return null;
+  return (
+    <div className="q-visa">
+      <div className="q-visa-head">Visa sponsorship</div>
+      <ul className="q-list">
+        {said.map((line) => (
+          <li key={line}>Posting: {line.charAt(0).toLowerCase() + line.slice(1)}.</li>
+        ))}
+        {summary?.lines.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+      {job.sponsor && (
+        <p className="q-source">
+          Filings from{" "}
+          <a href={job.sponsor.url} target="_blank" rel="noreferrer">
+            {PERM_TRACKER.name} (permtracker.app)
+          </a>
+          {job.sponsor.asOf ? `, decided cases through ${job.sponsor.asOf}` : ""}. Past filings, not a promise for
+          this role. Not legal advice.
+        </p>
+      )}
+    </div>
   );
 }
 

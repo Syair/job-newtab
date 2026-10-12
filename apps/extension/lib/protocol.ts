@@ -38,7 +38,8 @@ export const LOG_RETENTION = 40;
 export type PageMsg =
   | { kind: "subscribe" } //                    → replies with a snapshot
   | { kind: "startBuild"; resume?: boolean } // no-op if one is already running
-  | { kind: "cancel" };
+  | { kind: "cancel" }
+  | { kind: "refreshSponsors" }; // fill in employer filing records for jobs that lack them
 
 // worker → page (broadcast to every connected tab)
 export type BuildMsg =

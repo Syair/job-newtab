@@ -97,5 +97,9 @@ export function useJobBuild(onDone: (added: number) => void) {
     portRef.current?.postMessage({ kind: "cancel" } satisfies PageMsg);
   }, []);
 
-  return { state, build, cancel };
+  const refreshSponsors = useCallback(() => {
+    portRef.current?.postMessage({ kind: "refreshSponsors" } satisfies PageMsg);
+  }, []);
+
+  return { state, build, cancel, refreshSponsors };
 }

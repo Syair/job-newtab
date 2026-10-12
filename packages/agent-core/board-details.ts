@@ -11,6 +11,7 @@
 import { matchesRole } from "./filter";
 import type { JobBoard } from "./profile";
 import { decodeEntities, htmlToText, truncate } from "./text";
+import { visaSignals, type VisaSignal } from "./visa";
 
 export const DETAIL_DEFAULTS = {
   /** Job pages read per search, across both boards. LinkedIn ones take about a second each. */
@@ -39,6 +40,13 @@ export interface BoardDetail {
   /** The text above the description: title, company, place, pay, age. */
   header: string;
   description: string;
+  /** Visa rules the full description states, when it states any. */
+  visa?: VisaSignal[];
+}
+
+function withVisa(detail: BoardDetail, full: string): BoardDetail {
+  const visa = visaSignals(full);
+  return visa.length ? { ...detail, visa } : detail;
 }
 
 const LINK = /<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi;
@@ -144,7 +152,8 @@ export function extractPublicPosting(
   const start = open.index + open[0].length;
   const button = html.indexOf("show-more-less-html__button", start);
   const stop = html.lastIndexOf("</div>", button >= 0 ? button : html.length);
-  const description = truncate(htmlToText(html.slice(start, stop > start ? stop : undefined)), maxChars);
+  const full = htmlToText(html.slice(start, stop > start ? stop : undefined));
+  const description = truncate(full, maxChars);
   if (description.length < 200) return null;
   const pieces = [
     html.match(/<h[12][^>]*top-card-layout__title[^>]*>([\s\S]*?)<\/h[12]>/)?.[1],
@@ -155,7 +164,7 @@ export function extractPublicPosting(
     .map((p) => (p ? htmlToText(p) : ""))
     .filter(Boolean)
     .join(" · ");
-  return { id: card.id, board: card.board, url: detailUrl(card), header, description };
+  return withVisa({ id: card.id, board: card.board, url: detailUrl(card), header, description }, full);
 }
 
 /** Lines that end the page furniture above a description that has no heading. */
@@ -196,5 +205,5 @@ export function extractDetail(
   }
   const description = truncate(body.trim(), maxChars);
   if (description.length < 200) return null;
-  return { id: card.id, board: card.board, url: detailUrl(card), header: header.trim(), description };
+  return withVisa({ id: card.id, board: card.board, url: detailUrl(card), header: header.trim(), description }, body);
 }

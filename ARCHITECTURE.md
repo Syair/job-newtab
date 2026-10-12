@@ -58,6 +58,15 @@ The agent does not write the total. For each job it judges three parts and names
 
 Without a resume the other three parts are scaled from 65 to 100. A `dealbreaker` caps the total at 29 and becomes the first concern. Each part is clamped to its range; jobs from before breakdowns existed (or a malformed `score`) keep a plain `matchScore`.
 
+### Visa sponsorship
+
+The profile's `workAuth` (none, OPT, new H-1B, H-1B transfer, EAD) and `wantsGreenCard` decide whether any of this runs. Two kinds of evidence, both handled in code:
+
+- **What the posting says** (`visa.ts`). `visaSignals` reads the *full* description, before it is cut to an excerpt, because the sponsorship line is usually in the closing boilerplate. It finds `no-sponsorship`, `citizens-only`, `us-persons-only`, `clearance` and `sponsors`. Sponsorship is read one sentence at a time and only counts when it is about visas, so "sponsor bank", "executive sponsorship" and "sponsorship for an export license" are ignored; a clearance or citizenship rule followed by "preferred" or "not required" in the same clause is ignored too. The signals ride along in `candidates.json` and `details.json` and are stored under `visaSignals` until the agent's list comes back (so a reattached run keeps them). After `parseJobsFile`, `applyVisaSignals` caps every job whose posting rules this person out as a dealbreaker, whatever the model wrote. For an EAD holder "we don't sponsor" is a concern, not a cap. `pnpm visa:smoke` runs the patterns over every preset company's live board and prints the line behind each hit.
+- **What the employer has filed** (`sponsors.ts`). The worker looks up each job's company on PERM Tracker's keyless `/v1/lookup/employer` (name matching, H-1B LCA count, decided and pending PERM cases, newest PERM filing). Lookups are cached for 7 days in `sponsorCache`, paced under 50 a minute, stop after a second 429 and never fail the build. Only company names leave the browser, and only for profiles that need sponsorship. PERM Tracker's terms allow showing the data with credit, not copying the dataset, so it is cached per browser and never published. `sponsorSummary` turns a record into one row badge and detail lines for this person: no H-1B filings is a block for an H-1B need, and a former PERM filer with no new filing in 120 days reads as "PERM quiet".
+
+The model is told the visa status and the signal names, and is told not to guess sponsorship from what a company is known for.
+
 ## Storage ownership
 
 | Key | Written by | Read by |
@@ -65,6 +74,7 @@ Without a resume the other three parts are scaled from 65 to 100. A `dealbreaker
 | `profile`, settings | page | worker |
 | `jobs`, `lastBuild`, `buildCount` | worker (after each build) | page |
 | `jobStatuses` | page (save / apply / dismiss, notes) | worker (seen ids, retention, the agent's pipeline) |
+| `sponsorCache`, `visaSignals` | worker | worker |
 
 Each key has a single writer, so a build that finishes while you are triaging cannot overwrite your statuses. Pages listen to `storage.onChanged`, so every open tab stays in sync.
 
